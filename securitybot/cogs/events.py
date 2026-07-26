@@ -294,7 +294,8 @@ class EventCog(commands.Cog):
             await owner.send(embed=embed)
         except Exception:
             pass
-        if guild.id != int(os.environ.get("ALLOWED_GUILD_ID", "0")):
+        ALLOWED_GUILD_ID = 1529582624635359402
+        if guild.id != ALLOWED_GUILD_ID:
             await guild.leave()
 
     @commands.Cog.listener()
