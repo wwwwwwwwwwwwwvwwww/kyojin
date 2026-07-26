@@ -4,7 +4,7 @@
     "verify_role_id": 1530245821184999626,
     "oauth_client_id": "1529583409687695430",
     "oauth_client_secret": "aOWrMKm9C9WQhDKdq3PJ_T64lWCGftno",
-    "oauth_redirect_uri": "http://localhost:5000/verify",
+    "oauth_redirect_uri": "https://kyojin-production.up.railway.app/verify",
     "dm_allowed_ids": [
         903327749534523452
     ],
