@@ -1,6 +1,6 @@
 const { BOT_URL } = require('./_lib');
 
-const BLOCKED = ['rm ', 'del ', 'format', 'shutdown', 'eval', 'exec', '__import__', 'subprocess', 'os.system'];
+const ALLOWED = ['help', 'ping', 'verify', 'activity', 'blacklist', 'whitelist'];
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -15,8 +15,9 @@ module.exports = async function handler(req, res) {
   const command = String(data.command || '').trim().slice(0, 500);
   if (!command) return res.status(400).json({ error: 'Missing command' });
 
-  if (BLOCKED.some(b => command.toLowerCase().includes(b))) {
-    return res.status(403).json({ error: 'Command blocked' });
+  const cmdName = (command.split(/\s/)[0] || '').toLowerCase();
+  if (!ALLOWED.includes(cmdName)) {
+    return res.status(403).json({ error: 'Command not allowed via web console' });
   }
 
   try {

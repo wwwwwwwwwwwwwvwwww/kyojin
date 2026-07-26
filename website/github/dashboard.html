@@ -824,6 +824,7 @@ function updateUserSession(data){
 }
 function setToggle(el,on){if(!el)return;if(on)el.classList.add('on');else el.classList.remove('on')}
 function isOn(el){return el.classList.contains('on')}
+function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 
 let saveTimers={};
 function save(key,val){clearTimeout(saveTimers[key]);saveTimers[key]=setTimeout(async()=>{try{await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key,value:val})});showToast('Saved')}catch(e){showToast('Error')}},400)}
@@ -916,7 +917,7 @@ function renderAnWl(ids,userInfo){
       var avIdx=lastDigit%5;
       u={display:uid,avatar:'https://cdn.discordapp.com/embed/avatars/'+avIdx+'.png'};
     }
-    return '<div class="wl-user"><img class="wl-user-avatar" src="'+u.avatar+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+u.display+'</div><div class="wl-user-id">'+uid+'</div></div><span class="remove" data-uid="'+uid+'">&times;</span></div>';
+    return '<div class="wl-user"><img class="wl-user-avatar" src="'+esc(u.avatar)+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+esc(u.display)+'</div><div class="wl-user-id">'+esc(uid)+'</div></div><span class="remove" data-uid="'+esc(uid)+'">&times;</span></div>';
   }).join('');
   $$('.remove',c).forEach(function(r){r.addEventListener('click',function(){
     var uid=String(this.getAttribute('data-uid'));
@@ -983,7 +984,7 @@ function renderWl(id,users,userInfo){
     uid=String(uid);
     var u=userInfo[uid];
     if(!u){var lastDigit=parseInt(uid.charAt(uid.length-1),10)||0;u={display:uid,avatar:'https://cdn.discordapp.com/embed/avatars/'+(lastDigit%5)+'.png'}}
-    return '<div class="wl-user"><img class="wl-user-avatar" src="'+u.avatar+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+u.display+'</div><div class="wl-user-id">'+uid+'</div></div><span class="remove" data-uid="'+uid+'">&times;</span></div>';
+    return '<div class="wl-user"><img class="wl-user-avatar" src="'+esc(u.avatar)+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+esc(u.display)+'</div><div class="wl-user-id">'+esc(uid)+'</div></div><span class="remove" data-uid="'+esc(uid)+'">&times;</span></div>';
   }).join('');
   $$('.remove',c).forEach(function(r){r.addEventListener('click',function(){removeWl(this.getAttribute('data-uid'))})});
 }
@@ -1006,7 +1007,7 @@ function renderBl(ids,userInfo){
     uid=String(uid);
     var u=userInfo[uid];
     if(!u){var lastDigit=parseInt(uid.charAt(uid.length-1),10)||0;u={display:uid,avatar:'https://cdn.discordapp.com/embed/avatars/'+(lastDigit%5)+'.png'}}
-    return '<div class="wl-user"><img class="wl-user-avatar" src="'+u.avatar+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+u.display+'</div><div class="wl-user-id">'+uid+'</div></div><span class="remove" data-uid="'+uid+'">&times;</span></div>';
+    return '<div class="wl-user"><img class="wl-user-avatar" src="'+esc(u.avatar)+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+esc(u.display)+'</div><div class="wl-user-id">'+esc(uid)+'</div></div><span class="remove" data-uid="'+esc(uid)+'">&times;</span></div>';
   }).join('');
   $$('.remove',c).forEach(function(r){r.addEventListener('click',function(){removeBl(this.getAttribute('data-uid'))})});
 }
@@ -1023,7 +1024,7 @@ function addLine(text,type){var l=document.createElement('div');l.className='lin
 function addHTML(html){var d=document.createElement('div');d.className='line';d.innerHTML=html;$('console-output').appendChild(d);$('console-output').scrollTop=$('console-output').scrollHeight}
 $('console-run-btn').addEventListener('click',function(){
   var cmd=$('console-input').value.trim();if(!cmd)return;
-  addHTML('<span class="prompt">&gt;</span> '+cmd);$('console-input').value='';
+  addHTML('<span class="prompt">&gt;</span> '+esc(cmd));$('console-input').value='';
   fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({command:cmd})}).then(function(r){return r.json()}).then(function(d){if(d.output)d.output.split('\n').forEach(function(l){addLine(l)});if(d.error)addLine(d.error,'error')}).catch(function(){addLine('Could not connect to server','error')});
 });
 $('console-input').addEventListener('keydown',function(e){if(e.key==='Enter')$('console-run-btn').click()});
@@ -1152,7 +1153,7 @@ function renderLogList(cid,entries,showInfo){
     var tagLabel=e.type==='security'?'SECURITY':e.type==='command'?'CMD':'LOG';
     var infoBtn=showInfo&&e.details?'<span class="log-entry-info" onclick="showLogDetail(this)" data-details=\''+JSON.stringify(e.details).replace(/'/g,'&#39;')+'\'>&#9432;</span>':'';
     var dismissBtn='<span class="log-dismiss" onclick="dismissLog(\''+logId+'\')">&times;</span>';
-    return '<div class="log-entry" id="log-'+logId+'"><img class="log-entry-avatar" src="'+avatar+'" alt=""><div class="log-entry-body"><div class="log-entry-header"><span class="log-entry-tag '+tagClass+'">'+tagLabel+'</span><span class="log-entry-user">'+(e.user||'System')+'</span><span class="log-entry-time">'+(e.time||'')+'</span>'+infoBtn+'</div><div class="log-entry-text">'+(e.text||'')+'</div></div>'+dismissBtn+'</div>';
+    return '<div class="log-entry" id="log-'+esc(logId)+'"><img class="log-entry-avatar" src="'+esc(avatar)+'" alt=""><div class="log-entry-body"><div class="log-entry-header"><span class="log-entry-tag '+tagClass+'">'+tagLabel+'</span><span class="log-entry-user">'+esc(e.user||'System')+'</span><span class="log-entry-time">'+esc(e.time||'')+'</span>'+infoBtn+'</div><div class="log-entry-text">'+esc(e.text||'')+'</div></div>'+dismissBtn+'</div>';
   }).join('');
 }
 
@@ -1182,7 +1183,7 @@ function renderExterminated(exts){
     var info=JSON.stringify({Target:e.display+' ('+e.user+')',ExterminatedBy:e.created_by_name+' ('+e.created_by+')',Reason:e.reason,Date:e.time}).replace(/'/g,'&#39;');
     var infoBtn='<span class="log-entry-info" onclick="showLogDetail(this)" data-details=\''+info+'\'>&#9432;</span>';
     var dismissBtn='<span class="log-dismiss" onclick="dismissLog(\''+logId+'\')">&times;</span>';
-    return '<div class="log-entry" id="log-'+logId+'"><img class="log-entry-avatar" src="'+e.avatar+'" alt=""><div class="log-entry-body"><div class="log-entry-header"><span class="log-entry-tag security">EXTERMINATED</span><span class="log-entry-user">'+(e.display||e.user)+'</span><span class="log-entry-time">'+(e.time||'')+'</span>'+infoBtn+'</div><div class="log-entry-text">Banned by '+e.created_by_name+' &mdash; '+e.reason+'</div></div>'+dismissBtn+'</div>';
+    return '<div class="log-entry" id="log-'+esc(logId)+'"><img class="log-entry-avatar" src="'+esc(e.avatar)+'" alt=""><div class="log-entry-body"><div class="log-entry-header"><span class="log-entry-tag security">EXTERMINATED</span><span class="log-entry-user">'+esc(e.display||e.user)+'</span><span class="log-entry-time">'+esc(e.time||'')+'</span>'+infoBtn+'</div><div class="log-entry-text">Banned by '+esc(e.created_by_name)+' &mdash; '+esc(e.reason)+'</div></div>'+dismissBtn+'</div>';
   }).join('');
 }
 
@@ -1203,7 +1204,7 @@ function showLogDetail(el){
     var html='';
     for(var k in details){
       if(details.hasOwnProperty(k)){
-        html+='<div class="log-detail-row"><span class="log-detail-label">'+k+'</span><span class="log-detail-val">'+details[k]+'</span></div>';
+        html+='<div class="log-detail-row"><span class="log-detail-label">'+esc(k)+'</span><span class="log-detail-val">'+esc(details[k])+'</span></div>';
       }
     }
     body.innerHTML=html;

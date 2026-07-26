@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
@@ -576,22 +577,23 @@ class Database:
 
     # ── Login Approvals ─────────────────────────────────────────────────────
 
-    async def create_login_approval(self, user_id: int, access_key: str) -> int:
-        cursor = await self.db.execute(
-            "INSERT INTO login_approvals (user_id, access_key) VALUES (?, ?)",
-            (user_id, access_key),
+    async def create_login_approval(self, user_id: int, access_key: str) -> str:
+        approval_id = secrets.token_hex(16)
+        await self.db.execute(
+            "INSERT INTO login_approvals (id, user_id, access_key) VALUES (?, ?, ?)",
+            (approval_id, user_id, access_key),
         )
         await self.db.commit()
-        return cursor.lastrowid
+        return approval_id
 
-    async def get_login_approval(self, approval_id: int) -> dict | None:
+    async def get_login_approval(self, approval_id: str) -> dict | None:
         cursor = await self.db.execute(
             "SELECT * FROM login_approvals WHERE id=?", (approval_id,)
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def update_approval_status(self, approval_id: int, status: str, session_token: str = None) -> None:
+    async def update_approval_status(self, approval_id: str, status: str, session_token: str = None) -> None:
         if session_token:
             await self.db.execute(
                 "UPDATE login_approvals SET status=?, session_token=? WHERE id=?",

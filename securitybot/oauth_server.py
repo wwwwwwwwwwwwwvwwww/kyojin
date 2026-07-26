@@ -66,6 +66,13 @@ def load_dismissed():
             pass
 
 
+def get_client_ip(request: web.Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote or "unknown"
+
+
 def rate_limit(ip: str) -> bool:
     now = time.time()
     RATE_LIMITS[ip] = [t for t in RATE_LIMITS[ip] if now - t < 60]
@@ -106,18 +113,10 @@ def validate_session(token: str) -> dict | None:
     return session
 
 
-def security_headers(response: web.Response) -> web.Response:
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    return response
-
-
 class WebServer:
     def __init__(self, bot: discord.Client) -> None:
         self.bot = bot
         self.config = json.loads((Path(__file__).parent.parent / "config.json").read_text())
-        self.admin_hash = self.config.get("admin_password_hash", "")
         self.guild_id = self.config.get("allowed_guild_id", 0)
         self.verify_role_id = self.config.get("verify_role_id", 0)
         self.client_id = self.config.get("oauth_client_id", "")
@@ -178,13 +177,13 @@ class WebServer:
             return False
 
     async def handle_index(self, request: web.Request) -> web.Response:
-        return security_headers(web.FileResponse(WEBSITE_DIR / "index.html"))
+        return web.FileResponse(WEBSITE_DIR / "index.html")
 
     async def handle_login_page(self, request: web.Request) -> web.Response:
-        return security_headers(web.FileResponse(WEBSITE_DIR / "login.html"))
+        return web.FileResponse(WEBSITE_DIR / "login.html")
 
     async def handle_dashboard_page(self, request: web.Request) -> web.Response:
-        return security_headers(web.FileResponse(WEBSITE_DIR / "dashboard.html"))
+        return web.FileResponse(WEBSITE_DIR / "dashboard.html")
 
     async def handle_static(self, request: web.Request) -> web.Response:
         filename = request.match_info["filename"]
@@ -193,10 +192,10 @@ class WebServer:
         file_path = WEBSITE_DIR / filename
         if not file_path.exists() or not file_path.is_file():
             return web.Response(status=404)
-        return security_headers(web.FileResponse(file_path))
+        return web.FileResponse(file_path)
 
     async def handle_api_verify(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"success": False, "error": "Rate limited"}, status=429)
 
@@ -226,7 +225,7 @@ class WebServer:
         return web.json_response({"success": True, "username": display})
 
     async def handle_api_login(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"error": "Rate limited"}, status=429)
 
@@ -248,6 +247,11 @@ class WebServer:
 
         valid = await self.bot.db.validate_access_key(uid, access_key)
         if not valid:
+            try:
+                from securitybot.oauth_server import add_log
+                add_log("security", f"Failed login attempt for ID `{uid}` from IP `{ip}`", log_type="security", details={"User ID": str(uid), "IP": str(ip), "Key": access_key[:10] + "..."})
+            except Exception:
+                pass
             await asyncio.sleep(0.5)
             return web.json_response({"error": "Invalid or expired key"}, status=401)
 
@@ -304,7 +308,7 @@ class WebServer:
         return web.json_response(response_data)
 
     async def handle_api_command(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"error": "Rate limited"}, status=429)
 
@@ -323,9 +327,10 @@ class WebServer:
         if not command:
             return web.json_response({"error": "Missing command"}, status=400)
 
-        blocked = ["rm ", "del ", "format", "shutdown", "eval", "exec", "__import__", "subprocess", "os.system"]
-        if any(b in command.lower() for b in blocked):
-            return web.json_response({"error": "Command blocked"}, status=403)
+        ALLOWED_PREFIXES = ["help", "ping", "verify", "activity", "blacklist", "whitelist"]
+        cmd_name = command.split()[0].lower() if command.split() else ""
+        if cmd_name not in ALLOWED_PREFIXES:
+            return web.json_response({"error": "Command not allowed via web console"}, status=403)
 
         try:
             guild = None
@@ -362,14 +367,14 @@ class WebServer:
             if ctx.command:
                 async def capture_send(content=None, **kwargs):
                     if content:
-                        output_lines.append(str(content))
+                        output_lines.append(str(content)[:2000])
 
                 ctx.send = capture_send
 
                 try:
                     await ctx.command.invoke(ctx)
-                except Exception as e:
-                    output_lines.append(f"Error: {type(e).__name__}: {e}")
+                except Exception:
+                    output_lines.append("Command failed to execute.")
 
             if output_lines:
                 return web.json_response({
@@ -378,15 +383,15 @@ class WebServer:
                 })
 
             return web.json_response({
-                "output": f"Command '{command}' executed (no output)",
+                "output": f"Command '{cmd_name}' executed (no output)",
                 "user": session["username"]
             })
 
-        except Exception as e:
-            return web.json_response({"error": f"Failed: {type(e).__name__}: {e}"}, status=500)
+        except Exception:
+            return web.json_response({"error": "Command failed"}, status=500)
 
     async def handle_api_settings(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"error": "Rate limited"}, status=429)
 
@@ -472,7 +477,7 @@ class WebServer:
         })
 
     async def handle_api_settings_update(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"error": "Rate limited"}, status=429)
 
@@ -522,8 +527,11 @@ class WebServer:
                 antinuke[nested_key] = value
 
             await self.bot.db.set_raw_json(guild.id, "antinuke", antinuke)
-        elif key in ("prefix", "join_message", "leave_message", "join_gif", "leave_gif"):
+        elif key in ("prefix", "join_gif", "leave_gif"):
             await self.bot.db.update_settings(guild.id, **{key: value})
+        elif key in ("join_message", "leave_message"):
+            safe_value = str(value)[:500] if value else ""
+            await self.bot.db.update_settings(guild.id, **{key: safe_value})
         elif key in ("join_channel_id", "leave_channel_id"):
             try:
                 ch_id = int(str(value).replace("<#", "").replace(">", "")) if value else None
@@ -546,7 +554,7 @@ class WebServer:
         return web.json_response({"success": True})
 
     async def handle_api_whitelist(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"error": "Rate limited"}, status=429)
 
@@ -590,7 +598,7 @@ class WebServer:
             return web.json_response({"error": "Unknown action"}, status=400)
 
     async def handle_api_blacklist(self, request: web.Request) -> web.Response:
-        ip = request.remote
+        ip = get_client_ip(request)
         if not rate_limit(ip):
             return web.json_response({"error": "Rate limited"}, status=429)
 
@@ -633,9 +641,8 @@ class WebServer:
             return web.json_response({"error": "Unknown action"}, status=400)
 
     async def handle_api_approval(self, request: web.Request) -> web.Response:
-        try:
-            approval_id = int(request.match_info["id"])
-        except (ValueError, KeyError):
+        approval_id = request.match_info.get("id", "")
+        if not approval_id or not isinstance(approval_id, str) or len(approval_id) > 64:
             return web.json_response({"error": "Invalid approval ID"}, status=400)
 
         approval = await self.bot.db.get_login_approval(approval_id)
@@ -647,7 +654,8 @@ class WebServer:
             token = approval.get("session_token")
             response = web.json_response({"status": "approved"})
             if token:
-                response.set_cookie("session", token, path="/", httponly=True, samesite="Strict", max_age=3600)
+                secure = request.url and request.url.scheme == "https"
+                response.set_cookie("session", token, path="/", httponly=True, samesite="Strict", max_age=3600, secure=secure)
             return response
         elif status == "denied":
             return web.json_response({"status": "denied"})
@@ -743,11 +751,14 @@ async def start_web_server(bot: discord.Client) -> None:
 
     server = WebServer(bot)
     port = int(os.environ.get("PORT", 5000))
-
+    vercel_url = os.environ.get("VERCEL_URL", "")
     allowed_origins = [
         "http://localhost:5000",
         "http://localhost:3000",
     ]
+    if vercel_url:
+        allowed_origins.append(f"https://{vercel_url}")
+        allowed_origins.append(f"http://{vercel_url}")
 
     @web.middleware
     async def cors_middleware(request, handler):
@@ -756,14 +767,29 @@ async def start_web_server(bot: discord.Client) -> None:
             response = web.Response()
         else:
             response = await handler(request)
-        if origin in allowed_origins or origin.endswith(".vercel.app"):
+        if origin and origin in allowed_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
         response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
 
-    app = web.Application(middlewares=[cors_middleware])
+    @web.middleware
+    async def security_middleware(request, handler):
+        if request.method == "POST":
+            origin = request.headers.get("Origin", "")
+            api_key = request.headers.get("X-API-Key", "")
+            if origin and origin not in allowed_origins:
+                return web.json_response({"error": "Forbidden"}, status=403)
+        response = await handler(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        if request.url and request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+    app = web.Application(middlewares=[security_middleware, cors_middleware])
     app.router.add_get("/", server.handle_index)
     app.router.add_get("/index.html", server.handle_index)
     app.router.add_get("/login", server.handle_login_page)

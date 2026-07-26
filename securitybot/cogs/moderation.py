@@ -131,7 +131,7 @@ class KeysView(discord.ui.View):
 
 
 class LoginApprovalView(discord.ui.View):
-    def __init__(self, approval_id: int, user_id: int, access_key: str):
+    def __init__(self, approval_id: str, user_id: int, access_key: str):
         super().__init__(timeout=300)
         self.approval_id = approval_id
         self.user_id = user_id
