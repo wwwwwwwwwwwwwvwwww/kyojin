@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verification</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0e1117;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Inter', sans-serif;
+    position: relative;
+    overflow: hidden;
+  }
+
+  canvas#net {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  .card {
+    position: relative;
+    width: 480px;
+    min-height: 320px;
+    background: rgba(16, 19, 27, 0.88);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 40px;
+    text-align: center;
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(168, 216, 234, 0.12);
+    box-shadow: 0 0 60px rgba(168, 216, 234, 0.08);
+    z-index: 1;
+  }
+
+  .spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid rgba(168, 216, 234, 0.12);
+    border-top-color: #a8d8ea;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-bottom: 28px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .checkmark {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 24px;
+    opacity: 0;
+    transform: scale(0.5);
+    animation: popIn 0.4s ease forwards;
+  }
+
+  .checkmark-circle {
+    width: 64px;
+    height: 64px;
+    background: rgba(168, 216, 234, 0.15);
+    border: 2px solid rgba(168, 216, 234, 0.4);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .checkmark-circle svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .checkmark-circle svg path {
+    stroke: #a8d8ea;
+    stroke-dasharray: 40;
+    stroke-dashoffset: 40;
+    animation: drawCheck 0.4s ease 0.3s forwards;
+  }
+
+  @keyframes popIn { to { opacity: 1; transform: scale(1); } }
+  @keyframes drawCheck { to { stroke-dashoffset: 0; } }
+
+  .cross {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 24px;
+    opacity: 0;
+    transform: scale(0.5);
+    animation: popIn 0.4s ease forwards;
+  }
+
+  .cross-circle {
+    width: 64px;
+    height: 64px;
+    background: rgba(231, 76, 60, 0.1);
+    border: 2px solid rgba(231, 76, 60, 0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cross-circle svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .cross-circle svg path {
+    stroke: #e74c3c;
+    stroke-dasharray: 30;
+    stroke-dashoffset: 30;
+    animation: drawCheck 0.4s ease 0.3s forwards;
+  }
+
+  .state { display: none; flex-direction: column; align-items: center; }
+  .state.active { display: flex; }
+
+  .title {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .title.verifying { color: #a8d8ea; }
+  .title.verified { color: #a8d8ea; }
+  .title.failed { color: #e74c3c; }
+
+  .subtitle {
+    font-size: 13px;
+    color: rgba(168, 216, 234, 0.45);
+    letter-spacing: 2px;
+    text-transform: lowercase;
+  }
+
+  .error-box {
+    background: rgba(231, 76, 60, 0.08);
+    border: 1px solid rgba(231, 76, 60, 0.25);
+    border-radius: 8px;
+    padding: 12px 24px;
+    margin: 16px 0;
+    font-size: 13px;
+    color: #e74c3c;
+    letter-spacing: 0.5px;
+  }
+
+  .footer-text {
+    margin-top: 28px;
+    font-size: 12px;
+    color: rgba(168, 216, 234, 0.3);
+    letter-spacing: 1.5px;
+    line-height: 1.8;
+  }
+
+  .divider {
+    width: 70%;
+    height: 1px;
+    background: rgba(168, 216, 234, 0.1);
+    margin: 20px 0;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="net"></canvas>
+
+<div class="card">
+
+  <!-- VERIFYING -->
+  <div class="state active" id="state-verifying">
+    <div class="spinner"></div>
+    <div class="title verifying">VERIFYING</div>
+    <div class="subtitle">Contacting server.</div>
+  </div>
+
+  <!-- VERIFIED -->
+  <div class="state" id="state-verified">
+    <div class="checkmark">
+      <div class="checkmark-circle">
+        <svg viewBox="0 0 32 32" fill="none">
+          <path d="M8 16 L14 22 L24 10" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="title verified">VERIFIED</div>
+    <div class="subtitle" id="verified-user">Verified as username</div>
+    <div class="divider"></div>
+    <div class="footer-text">Role granted. Close this tab<br>and return to Discord.</div>
+  </div>
+
+  <!-- FAILED -->
+  <div class="state" id="state-failed">
+    <div class="cross">
+      <div class="cross-circle">
+        <svg viewBox="0 0 28 28" fill="none">
+          <path d="M8 8 L20 20" stroke-width="3" stroke-linecap="round"/>
+          <path d="M20 8 L8 20" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="title failed">FAILED</div>
+    <div class="error-box" id="error-message">Invalid or expired code</div>
+    <div class="divider"></div>
+    <div class="footer-text">Your link may have expired.<br>Request a new one in Discord.</div>
+  </div>
+</div>
+
+<script>
+// ===== NET BACKGROUND =====
+const canvas = document.getElementById('net');
+const ctx = canvas.getContext('2d');
+let w, h, particles = [];
+const PARTICLE_COUNT = 80;
+const CONNECTION_DISTANCE = 150;
+const MOUSE_RADIUS = 200;
+let mouse = { x: -9999, y: -9999 };
+
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+document.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+class Particle {
+  constructor() {
+    this.x = Math.random() * w;
+    this.y = Math.random() * h;
+    this.vx = (Math.random() - 0.5) * 0.4;
+    this.vy = (Math.random() - 0.5) * 0.4;
+    this.radius = Math.random() * 1.5 + 0.5;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+
+    if (this.x < 0 || this.x > w) this.vx *= -1;
+    if (this.y < 0 || this.y > h) this.vy *= -1;
+
+    const dx = mouse.x - this.x;
+    const dy = mouse.y - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < MOUSE_RADIUS) {
+      const force = (MOUSE_RADIUS - dist) / MOUSE_RADIUS * 0.02;
+      this.vx -= dx * force * 0.01;
+      this.vy -= dy * force * 0.01;
+    }
+  }
+
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(168, 216, 234, 0.5)';
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  particles.push(new Particle());
+}
+
+function drawConnections() {
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < CONNECTION_DISTANCE) {
+        const opacity = (1 - dist / CONNECTION_DISTANCE) * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(168, 216, 234, ${opacity})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function animate() {
+  ctx.clearRect(0, 0, w, h);
+  particles.forEach(p => { p.update(); p.draw(); });
+  drawConnections();
+  requestAnimationFrame(animate);
+}
+animate();
+
+// ===== VERIFY LOGIC =====
+function showState(state) {
+  document.querySelectorAll('.state').forEach(s => s.classList.remove('active'));
+  document.getElementById('state-' + state).classList.add('active');
+}
+
+// ===== CONFIG =====
+const BOT_TOKEN = "YOUR_BOT_TOKEN";
+const GUILD_ID = "YOUR_GUILD_ID";
+const VERIFY_ROLE_ID = "YOUR_ROLE_ID";
+const CLIENT_ID = "YOUR_CLIENT_ID";
+const CLIENT_SECRET = "YOUR_CLIENT_SECRET";
+// ==================
+
+const params = new URLSearchParams(window.location.search);
+const code = params.get('code');
+
+if (!code) {
+  document.getElementById('error-message').textContent = 'No authorization code provided';
+  showState('failed');
+} else {
+  showState('verifying');
+  doVerify();
+}
+
+async function doVerify() {
+  try {
+    const tokenRes = await fetch('https://discord.com/api/v10/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: window.location.origin + window.location.pathname,
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET
+      })
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      document.getElementById('error-message').textContent = 'Invalid or expired code';
+      showState('failed');
+      return;
+    }
+
+    const userRes = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: { 'Authorization': 'Bearer ' + tokenData.access_token }
+    });
+    const userData = await userRes.json();
+    if (!userData.id) {
+      document.getElementById('error-message').textContent = 'Failed to get user info';
+      showState('failed');
+      return;
+    }
+
+    const addRes = await fetch(
+      'https://discord.com/api/v10/guilds/' + GUILD_ID + '/members/' + userData.id,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Bot ' + BOT_TOKEN,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ access_token: tokenData.access_token })
+      }
+    );
+
+    if (!addRes.ok && addRes.status !== 204) {
+      document.getElementById('error-message').textContent = 'Failed to add you to the server';
+      showState('failed');
+      return;
+    }
+
+    const roleRes = await fetch(
+      'https://discord.com/api/v10/guilds/' + GUILD_ID + '/members/' + userData.id + '/roles/' + VERIFY_ROLE_ID,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Bot ' + BOT_TOKEN,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      }
+    );
+
+    if (!roleRes.ok && roleRes.status !== 204) {
+      document.getElementById('error-message').textContent = 'Failed to assign role';
+      showState('failed');
+      return;
+    }
+
+    const discriminator = userData.discriminator && userData.discriminator !== '0'
+      ? '#' + userData.discriminator
+      : '';
+    document.getElementById('verified-user').textContent = 'Verified as @' + userData.username + discriminator;
+    showState('verified');
+
+  } catch (e) {
+    document.getElementById('error-message').textContent = 'Could not contact server';
+    showState('failed');
+  }
+}
+</script>
+
+</body>
+</html>

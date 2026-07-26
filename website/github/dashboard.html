@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jinn — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Inter',sans-serif;background:#060510;color:#e0e0e0;-webkit-font-smoothing:antialiased;overflow:hidden;padding-top:56px}
+@keyframes slideUp{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes auroraShift{0%{transform:translate(0,0) scale(1)}50%{transform:translate(-3%,2%) scale(1.05)}100%{transform:translate(2%,-1%) scale(.98)}}
+@keyframes pulse{0%,100%{transform:scale(1);box-shadow:0 0 8px rgba(74,222,128,.5)}50%{transform:scale(1.3);box-shadow:0 0 14px rgba(74,222,128,.7)}}
+@keyframes loadSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes loadBar{0%{width:0}100%{width:100%}}
+
+.loading-screen{position:fixed;inset:0;z-index:9999;background:#060510;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .4s ease,transform .4s ease}
+.loading-screen.done{opacity:0;transform:scale(1.02);pointer-events:none}
+.loading-bot-icon{width:56px;height:56px;border-radius:50%;border:2px solid rgba(168,216,234,.15);margin-bottom:16px;object-fit:cover}
+.loading-icon{width:48px;height:48px;border-radius:50%;border:2px solid rgba(168,216,234,.1);border-top-color:#a8d8ea;animation:loadSpin .8s linear infinite;margin-bottom:16px}
+.loading-text{font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:rgba(168,216,234,.4);margin-bottom:20px}
+.loading-bar{width:200px;height:2px;background:rgba(255,255,255,.04);border-radius:99px;overflow:hidden}
+.loading-bar-fill{height:100%;background:linear-gradient(90deg,transparent,#a8d8ea,transparent);animation:loadBar 1.2s ease-in-out infinite;border-radius:99px}
+
+.aurora{position:fixed;top:-40%;left:-20%;width:140%;height:140%;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 50% at 70% 10%,rgba(168,216,234,.08) 0%,transparent 60%),radial-gradient(ellipse 50% 45% at 20% 80%,rgba(120,180,220,.06) 0%,transparent 55%),radial-gradient(ellipse 45% 40% at 90% 90%,rgba(168,216,234,.04) 0%,transparent 55%);animation:auroraShift 20s ease-in-out infinite alternate}
+canvas#particles{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
+
+.navbar{position:fixed;top:0;left:0;right:0;height:56px;background:rgba(10,12,18,.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(168,216,234,.08);display:flex;align-items:center;justify-content:center;padding:0 24px;z-index:100}
+.nav-left{position:absolute;left:24px;display:flex;align-items:center;gap:12px}
+.nav-center{display:flex;align-items:center;justify-content:center;gap:8px}
+.nav-right{position:absolute;right:24px;display:flex;align-items:center;gap:16px}
+.nav-icon{width:32px;height:32px;border-radius:50%;object-fit:cover}
+.nav-name{font-size:15px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#fff;transition:transform .2s ease,letter-spacing .2s ease,color .2s ease;cursor:pointer}
+.nav-name:hover{transform:scale(1.08);letter-spacing:5px;color:#a8d8ea}
+.nav-link{font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.2);cursor:pointer;background:none;border:none;font-family:'Inter',sans-serif;transition:all .3s ease;text-decoration:none;position:relative;display:inline-block;padding:6px 4px}
+.nav-link::after{content:'';position:absolute;bottom:0;left:0;width:100%;height:1px;background:#a8d8ea;transform:scaleX(0);transition:transform .3s}
+.nav-link:hover::after, .nav-link.active::after{transform:scaleX(1)}
+.nav-link:hover, .nav-link.active{color:#ffffff;font-size:14px;letter-spacing:3px}
+.online-dot{width:8px;height:8px;border-radius:50%;background:#43b581;box-shadow:0 0 8px rgba(67,181,129,.5);animation:pulse 2s ease-in-out infinite}
+
+.layout{display:flex;height:calc(100vh - 56px);position:relative;z-index:1}
+.sidebar{width:180px;background:rgba(6,6,10,.94);border-right:1px solid rgba(168,216,234,.04);padding:12px 0;flex-shrink:0;display:flex;flex-direction:column;overflow-y:auto}
+.sidebar-label{font-size:8px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:rgba(168,216,234,.18);padding:14px 16px 6px}
+.sidebar-item{padding:8px 16px;font-size:11px;color:rgba(255,255,255,.22);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;border-left:2px solid transparent;font-weight:500}
+.sidebar-item:hover{color:rgba(255,255,255,.5);background:rgba(168,216,234,.02)}
+.sidebar-item.active{color:#a8d8ea;background:rgba(168,216,234,.04);border-left-color:#a8d8ea}
+
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.panel-area{flex:1;overflow-y:auto;padding:20px 24px}
+.panel-area::-webkit-scrollbar{width:5px}
+.panel-area::-webkit-scrollbar-track{background:transparent}
+.panel-area::-webkit-scrollbar-thumb{background:rgba(168,216,234,.08);border-radius:99px}
+.panel-page{display:none}
+.panel-page.active{display:block;animation:slideUp .25s ease-out}
+
+/* CARDS */
+.card{border-radius:12px;background:rgba(10,10,16,.65);border:1px solid rgba(168,216,234,.05);transition:border-color .25s}
+.card:hover{border-color:rgba(168,216,234,.1)}
+.card-header{padding:14px 18px 10px;border-bottom:1px solid rgba(168,216,234,.03)}
+.card-title{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(168,216,234,.4)}
+.card-body{padding:2px 0}
+
+/* ROWS */
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;transition:background .15s}
+.row:hover{background:rgba(168,216,234,.015)}
+.row+.row{border-top:1px solid rgba(255,255,255,.015)}
+.row-label{font-size:12px;color:rgba(255,255,255,.4);white-space:nowrap;font-weight:400}
+.row-value{font-size:11px;color:rgba(168,216,234,.3);font-family:'JetBrains Mono',monospace}
+
+/* TOGGLE */
+.toggle{position:relative;flex-shrink:0;width:36px;height:20px;border-radius:10px;padding:0;cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);transition:all .25s cubic-bezier(.4,0,.2,1)}
+.toggle.on{background:rgba(74,222,128,.7);border-color:rgba(74,222,128,.4);box-shadow:0 0 10px rgba(74,222,128,.15)}
+.toggle span{position:absolute;border-radius:50%;background:#fff;width:14px;height:14px;top:2px;left:2px;transition:transform .2s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.toggle.on span{transform:translateX(16px)}
+
+/* INPUTS */
+.input{width:100%;padding:8px 10px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.05);border-radius:6px;color:#ddd;font-size:11px;font-family:'JetBrains Mono',monospace;outline:none;transition:all .2s}
+.input:focus{border-color:rgba(168,216,234,.3);box-shadow:0 0 0 2px rgba(168,216,234,.06)}
+.input::placeholder{color:rgba(255,255,255,.1)}
+
+/* GRID */
+.grid{display:grid;gap:14px;align-items:start}
+.grid-2{grid-template-columns:1fr 1fr}
+
+/* CATEGORY TABS */
+.cat-tabs{display:flex;gap:6px;padding:14px 0 12px;flex-wrap:wrap}
+.cat-tab{display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.2);cursor:pointer;border-radius:8px;transition:all .2s;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.03);user-select:none}
+.cat-tab img{width:16px;height:16px;filter:grayscale(1) brightness(.5);transition:filter .2s}
+.cat-tab:hover{color:rgba(255,255,255,.45);background:rgba(168,216,234,.04);border-color:rgba(168,216,234,.08)}
+.cat-tab:hover img{filter:grayscale(0) brightness(1)}
+.cat-tab.active{color:#a8d8ea;background:rgba(168,216,234,.08);border-color:rgba(168,216,234,.18);box-shadow:0 0 12px rgba(168,216,234,.05)}
+.cat-tab.active img{filter:grayscale(0) brightness(1.1)}
+.cat-content{display:none;animation:fadeIn .15s ease-out}
+.cat-content.active{display:block}
+
+/* ANTI-NUKE CATEGORY PANELS */
+.an-panel{border-radius:12px;background:rgba(10,10,16,.55);border:1px solid rgba(168,216,234,.04);overflow:hidden}
+.an-panel:hover{border-color:rgba(168,216,234,.08)}
+
+.an-head{display:flex;align-items:center;gap:14px;padding:16px 20px;background:rgba(168,216,234,.02);border-bottom:1px solid rgba(168,216,234,.04)}
+.an-emoji{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(168,216,234,.06);border:1px solid rgba(168,216,234,.08);flex-shrink:0;transition:all .2s}
+.an-emoji img{width:20px;height:20px}
+.an-panel:hover .an-emoji{background:rgba(168,216,234,.08);border-color:rgba(168,216,234,.12)}
+
+.an-info{flex:1;min-width:0}
+.an-title{font-size:12px;font-weight:600;color:rgba(255,255,255,.65);margin-bottom:3px;letter-spacing:.03em}
+.an-sub{font-size:10px;color:rgba(255,255,255,.16);letter-spacing:.01em}
+
+.an-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:all .3s}
+.an-dot.on{background:#4ade80;box-shadow:0 0 8px rgba(74,222,128,.35)}
+.an-dot.off{background:rgba(255,255,255,.08)}
+
+.an-body{padding:4px 0}
+
+.an-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 20px;transition:background .15s}
+.an-row:hover{background:rgba(168,216,234,.015)}
+.an-row+.an-row{border-top:1px solid rgba(255,255,255,.02)}
+.an-label{font-size:12px;color:rgba(255,255,255,.38);white-space:nowrap;font-weight:400}
+
+/* PUNISHMENT SELECTOR */
+.punish-select{display:flex;gap:0;background:rgba(0,0,0,.3);border-radius:8px;padding:3px;border:1px solid rgba(255,255,255,.04)}
+.punish-btn{padding:6px 16px;font-size:10px;font-weight:600;border-radius:6px;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,.2);font-family:'Inter',sans-serif;transition:all .2s;letter-spacing:.5px;text-transform:uppercase;user-select:none}
+.punish-btn:hover{color:rgba(255,255,255,.4);background:rgba(255,255,255,.03)}
+.punish-btn.active{background:rgba(168,216,234,.12);color:#a8d8ea}
+.punish-btn.danger.active{background:rgba(239,68,68,.12);color:#ef4444}
+
+/* WHITELIST */
+.wl-user{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(6,6,10,.5);border:1px solid rgba(168,216,234,.08);border-radius:12px;margin-bottom:6px;transition:all .15s}
+.wl-user:hover{border-color:rgba(168,216,234,.18);background:rgba(6,6,10,.7)}
+.wl-user-avatar{width:32px;height:32px;border-radius:50%;border:1px solid rgba(168,216,234,.12);object-fit:cover;flex-shrink:0}
+.wl-user-info{flex:1;min-width:0}
+.wl-user-name{font-size:11px;font-weight:600;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wl-user-id{font-size:9px;color:rgba(168,216,234,.35);font-family:'JetBrains Mono',monospace;letter-spacing:.5px}
+.wl-user .remove{cursor:pointer;color:rgba(239,68,68,.35);transition:all .15s;font-size:14px;padding:4px 6px;border-radius:6px;line-height:1;flex-shrink:0}
+.wl-user .remove:hover{color:#ef4444;background:rgba(239,68,68,.1)}
+.wl-empty{font-size:11px;color:rgba(255,255,255,.08);padding:12px 0;font-style:italic;text-align:center}
+
+/* GIF PREVIEW */
+.gif-preview{width:100%;max-width:300px;border-radius:8px;border:1px solid rgba(168,216,234,.08);margin-top:8px}
+
+/* CONSOLE */
+.console{display:flex;flex-direction:column;height:calc(100vh - 180px)}
+.console-output{flex:1;background:rgba(6,6,10,.8);border:1px solid rgba(168,216,234,.04);border-radius:10px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,.4);overflow-y:auto;margin-bottom:10px;line-height:1.6}
+.console-output .line{margin-bottom:1px}
+.console-output .line.info{color:#a8d8ea}
+.console-output .line.error{color:#ef4444}
+.console-output .line .prompt{color:rgba(168,216,234,.3)}
+.console-input-row{display:flex;gap:8px}
+.console-input{flex:1;padding:10px 14px;background:rgba(6,6,10,.8);border:1px solid rgba(168,216,234,.06);border-radius:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;transition:border-color .2s}
+.console-input:focus{border-color:rgba(168,216,234,.25)}
+.console-input::placeholder{color:rgba(255,255,255,.1)}
+.console-run{padding:10px 20px;background:rgba(168,216,234,.08);border:1px solid rgba(168,216,234,.15);border-radius:8px;color:#a8d8ea;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s}
+.console-run:hover{background:rgba(168,216,234,.14);border-color:rgba(168,216,234,.25)}
+
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;background:rgba(168,216,234,.1);border:1px solid rgba(168,216,234,.2);border-radius:8px;color:#a8d8ea;font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;opacity:0;transform:translateY(10px);transition:all .3s;z-index:100;pointer-events:none;backdrop-filter:blur(8px)}
+.toast.show{opacity:1;transform:translateY(0)}
+
+.signout-widget{position:fixed;left:24px;bottom:24px;z-index:25;width:170px;max-width:calc(100vw - 48px);background:rgba(6,6,10,.95);border:1px solid rgba(168,216,234,.16);border-radius:16px;padding:12px;display:flex;align-items:center;gap:10px;box-shadow:0 16px 38px rgba(0,0,0,.44);cursor:grab;transition:transform .2s ease}
+.signout-widget:active{cursor:grabbing;transform:scale(1.01)}
+.signout-avatar{width:38px;height:38px;border-radius:50%;background:rgba(168,216,234,.08);border:1px solid rgba(168,216,234,.16);object-fit:cover;transition:transform .2s ease}
+.signout-widget:hover .signout-avatar{transform:scale(1.05)}
+.signout-info{flex:1;min-width:0;overflow:hidden}
+.signout-name{font-size:11px;font-weight:700;color:#a8d8ea;margin-bottom:3px;letter-spacing:.08em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.signout-meta{font-size:10px;color:#fff;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.signout-btn{width:100%;margin-top:10px;padding:8px 10px;border-radius:14px;border:1px solid rgba(168,216,234,.15);background:rgba(168,216,234,.08);color:#a8d8ea;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:transform .2s,background .2s,border-color .2s}
+.signout-btn:hover{background:rgba(168,216,234,.16);border-color:rgba(168,216,234,.28);transform:scale(1.02)}
+.confirm-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50}
+.confirm-overlay.active{opacity:1;pointer-events:auto}
+.confirm-card{width:min(420px,100%);background:rgba(10,10,16,.98);border:1px solid rgba(168,216,234,.18);border-radius:22px;padding:28px;box-shadow:0 28px 90px rgba(0,0,0,.55);text-align:center;transform:translateY(18px) scale(.98);transition:transform .25s ease,opacity .25s ease;opacity:0}
+.confirm-overlay.active .confirm-card{transform:translateY(0) scale(1);opacity:1}
+.confirm-title{font-size:16px;font-weight:700;color:#fff;margin-bottom:14px}
+.confirm-text{font-size:12px;color:rgba(255,255,255,.78);line-height:1.6;margin-bottom:22px}
+.confirm-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.confirm-action{flex:1;min-width:120px;padding:12px 14px;border-radius:14px;border:1px solid rgba(168,216,234,.15);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:transform .2s,background .2s,border-color .2s}
+.confirm-action:hover{transform:scale(1.03)}
+.confirm-action.no{background:rgba(255,255,255,.05);color:#fff}
+.confirm-action.yes{background:#a8d8ea;color:#060510;border-color:#a8d8ea}
+
+/* ADD BUTTON */
+.console-run{transition:all .2s,transform .2s}
+.console-run:hover{transform:scale(1.08);background:rgba(168,216,234,.18);border-color:rgba(168,216,234,.3)}
+
+/* INPUT ROW - input before button */
+.input-row{display:flex;align-items:center;gap:8px}
+.input-row .input{flex:1}
+
+/* EDIT ICON */
+.edit-icon{cursor:pointer;color:rgba(168,216,234,.25);transition:all .15s;font-size:12px;padding:2px 4px;border-radius:4px}
+.edit-icon:hover{color:#a8d8ea;background:rgba(168,216,234,.08)}
+.guild-edit-row{display:flex;align-items:center;gap:8px}
+.guild-edit-input{display:none;width:150px}
+.guild-edit-row.editing .row-value{display:none}
+.guild-edit-row.editing .guild-edit-input{display:block}
+.guild-edit-row.editing .edit-icon{display:none}
+
+/* ANTI-NUKE SUBTABS - vertical sidebar within page */
+.an-layout{display:flex;gap:16px;min-height:400px}
+.an-sidebar{width:160px;flex-shrink:0;display:flex;flex-direction:column;gap:2px}
+.an-sidebar-item{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;font-size:11px;font-weight:500;color:rgba(255,255,255,.25);cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
+.an-sidebar-item:hover{color:rgba(255,255,255,.5);background:rgba(168,216,234,.03)}
+.an-sidebar-item.active{color:#a8d8ea;background:rgba(168,216,234,.06);border-color:rgba(168,216,234,.1)}
+.an-sidebar-item .an-sb-emoji{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:rgba(168,216,234,.06);flex-shrink:0}
+.an-sidebar-item .an-sb-emoji img{width:14px;height:14px}
+.an-sidebar-item .an-sb-dot{width:6px;height:6px;border-radius:50%;margin-left:auto;flex-shrink:0}
+.an-sidebar-item .an-sb-dot.on{background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.3)}
+.an-sidebar-item .an-sb-dot.off{background:rgba(255,255,255,.08)}
+.an-main{flex:1;min-width:0}
+.an-panel-content{display:none;animation:fadeIn .15s ease-out}
+.an-panel-content.active{display:block}
+
+/* ANTI-NUKE WHITELIST */
+.an-wl-card{border-radius:12px;background:rgba(10,10,16,.55);border:1px solid rgba(168,216,234,.04);overflow:hidden;margin-bottom:14px}
+.an-wl-head{display:flex;align-items:center;gap:12px;padding:14px 18px;background:rgba(168,216,234,.02);border-bottom:1px solid rgba(168,216,234,.04)}
+.an-wl-head .an-title{font-size:12px;font-weight:600;color:rgba(255,255,255,.65);letter-spacing:.03em}
+.an-wl-body{padding:10px 18px}
+
+/* LOG LIST */
+.log-list{max-height:500px;overflow-y:auto;padding:4px 0}
+.log-list::-webkit-scrollbar{width:3px}
+.log-list::-webkit-scrollbar-thumb{background:rgba(168,216,234,.1);border-radius:2px}
+.log-entry{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.015);transition:background .15s}
+.log-entry:hover{background:rgba(168,216,234,.02)}
+.log-entry:last-child{border-bottom:none}
+.log-entry-avatar{width:28px;height:28px;border-radius:50%;border:1px solid rgba(168,216,234,.08);object-fit:cover;flex-shrink:0}
+.log-entry-body{flex:1;min-width:0}
+.log-entry-header{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.log-entry-user{font-size:11px;font-weight:600;color:rgba(255,255,255,.6)}
+.log-entry-time{font-size:9px;color:rgba(168,216,234,.25);font-family:'JetBrains Mono',monospace}
+.log-entry-text{font-size:11px;color:rgba(255,255,255,.3);line-height:1.5}
+.log-entry-tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:8px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-right:4px}
+.log-entry-tag.security{background:rgba(239,68,68,.1);color:rgba(239,68,68,.6);border:1px solid rgba(239,68,68,.12)}
+.log-entry-tag.command{background:rgba(168,216,234,.08);color:rgba(168,216,234,.5);border:1px solid rgba(168,216,234,.1)}
+.log-entry-tag.info{background:rgba(74,222,128,.08);color:rgba(74,222,128,.5);border:1px solid rgba(74,222,128,.1)}
+.log-entry-info{cursor:pointer;color:rgba(168,216,234,.3);transition:all .15s;font-size:12px;padding:2px 5px;border-radius:4px;flex-shrink:0}
+.log-entry-info:hover{color:#a8d8ea;background:rgba(168,216,234,.08)}
+
+/* LOG DETAIL POPUP */
+.log-detail-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50}
+.log-detail-overlay.active{opacity:1;pointer-events:auto}
+.log-detail-card{width:min(500px,100%);background:rgba(10,10,16,.98);border:1px solid rgba(168,216,234,.18);border-radius:18px;padding:24px;box-shadow:0 28px 90px rgba(0,0,0,.55);transform:translateY(18px) scale(.98);transition:transform .25s ease,opacity .25s ease;opacity:0;max-height:70vh;overflow-y:auto}
+.log-detail-overlay.active .log-detail-card{transform:translateY(0) scale(1);opacity:1}
+.log-detail-title{font-size:14px;font-weight:700;color:#a8d8ea;margin-bottom:16px;letter-spacing:.05em}
+.log-detail-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.log-detail-row:last-child{border-bottom:none}
+.log-detail-label{font-size:11px;color:rgba(255,255,255,.3);font-weight:500}
+.log-detail-val{font-size:11px;color:rgba(168,216,234,.6);font-family:'JetBrains Mono',monospace;text-align:right;max-width:60%;word-break:break-all}
+.log-detail-close{width:100%;margin-top:16px;padding:10px;border-radius:10px;border:1px solid rgba(168,216,234,.15);background:rgba(168,216,234,.06);color:#a8d8ea;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s}
+.log-detail-close:hover{background:rgba(168,216,234,.12)}
+
+/* LOG CONTROLS */
+.log-controls{display:none}
+.log-read-all{padding:4px 10px;border-radius:6px;border:1px solid rgba(168,216,234,.12);background:rgba(168,216,234,.06);color:rgba(168,216,234,.5);font-size:8px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;margin-left:auto;flex-shrink:0}
+.log-read-all:hover{background:rgba(168,216,234,.12);color:#a8d8ea;border-color:rgba(168,216,234,.25)}
+.log-head-readall{padding:4px 10px;border-radius:6px;border:1px solid rgba(168,216,234,.12);background:rgba(168,216,234,.06);color:rgba(168,216,234,.5);font-size:8px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;margin-left:auto;flex-shrink:0}
+.log-head-readall:hover{background:rgba(168,216,234,.12);color:#a8d8ea;border-color:rgba(168,216,234,.25)}
+.log-entry .log-dismiss{cursor:pointer;color:rgba(239,68,68,.45);transition:all .15s;font-size:14px;padding:2px 8px;border-radius:4px;flex-shrink:0;opacity:1;font-weight:700}
+.log-entry .log-dismiss:hover{color:#ef4444;background:rgba(239,68,68,.12);transform:scale(1.15)}
+.log-entry.dismissed{display:none}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(168,216,234,.1);border-radius:2px}
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loading-screen">
+  <img class="loading-bot-icon" id="loading-bot-icon" src="icon.png" alt="">
+  <div class="loading-text" id="loading-text"></div>
+  <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+</div>
+
+<div class="aurora"></div>
+<canvas id="particles"></canvas>
+
+<nav class="navbar">
+  <div class="nav-left">
+    <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:12px">
+      <img class="nav-icon" src="icon.png" alt="">
+      <span class="nav-name">Jinn</span>
+    </a>
+  </div>
+  <div class="nav-center">
+    <a class="nav-link" href="/">Home</a>
+  </div>
+  <div class="nav-right">
+    <span class="nav-link" id="nav-auth">Login</span>
+    <div class="online-dot"></div>
+  </div>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-label">Core</div>
+    <div class="sidebar-item active" data-page="console">Console</div>
+    <div class="sidebar-item" data-page="settings">Settings</div>
+    <div class="sidebar-item" data-page="logs">Logs</div>
+    <div class="sidebar-label">Protection</div>
+    <div class="sidebar-item" data-page="antinuke">Anti-Nuke</div>
+    <div class="sidebar-item" data-page="whitelist">Whitelist</div>
+    <div class="sidebar-item" data-page="blacklist">Blacklist</div>
+    <div class="sidebar-label">Logging</div>
+    <div class="sidebar-item" data-page="logging">Logging</div>
+    <div class="sidebar-item" data-page="joinleave">Join / Leave</div>
+  </div>
+
+  <div class="main">
+    <div class="panel-area">
+
+      <!-- CONSOLE -->
+      <div class="panel-page active" id="page-console">
+        <div class="console">
+          <div class="console-output" id="console-output">
+            <div class="line info">Jinn Security — Console</div>
+            <div class="line" style="color:rgba(255,255,255,.1)">Type commands below. Use the bot prefix ,</div>
+            <div class="line">&nbsp;</div>
+          </div>
+          <div class="console-input-row">
+            <input class="console-input" id="console-input" placeholder="Enter command..." autocomplete="off">
+            <button class="console-run" id="console-run-btn">Run</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="panel-page" id="page-settings">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-header"><span class="card-title">General</span></div>
+            <div class="card-body">
+              <div class="row"><span class="row-label">Prefix</span><input class="input" style="width:50px;text-align:center" id="s-prefix" value=","></div>
+              <div class="row"><span class="row-label">Guild ID</span><div class="guild-edit-row" id="guild-edit-row"><span class="row-value" id="s-guild-id">&mdash;</span><input class="input guild-edit-input" id="s-guild-id-input" placeholder="Guild ID" style="width:150px"><span class="edit-icon" id="guild-edit-btn">&#9998;</span></div></div>
+              <div class="row"><span class="row-label">Members</span><span class="row-value" id="s-members">&mdash;</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Roles</span></div>
+            <div class="card-body">
+              <div class="row"><span class="row-label">Verify Role</span><input class="input" style="width:150px" id="s-verify-role" placeholder="Role ID"></div>
+              <div class="row"><span class="row-label">Legacy Role</span><input class="input" style="width:150px" id="s-legacy-role" placeholder="Role ID"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div class="card-header"><span class="card-title">Server Stats</span></div>
+          <div class="card-body">
+            <div class="row"><span class="row-label">Server Name</span><span class="row-value" id="stats-name">&mdash;</span></div>
+            <div class="row"><span class="row-label">Server ID</span><span class="row-value" id="stats-id">&mdash;</span></div>
+            <div class="row"><span class="row-label">Members</span><span class="row-value" id="stats-members">&mdash;</span></div>
+            <div class="row"><span class="row-label">Roles</span><span class="row-value" id="stats-roles">&mdash;</span></div>
+            <div class="row"><span class="row-label">Channels</span><span class="row-value" id="stats-channels">&mdash;</span></div>
+            <div class="row"><span class="row-label">Emojis</span><span class="row-value" id="stats-emojis">&mdash;</span></div>
+            <div class="row"><span class="row-label">Boost Level</span><span class="row-value" id="stats-boost">&mdash;</span></div>
+            <div class="row"><span class="row-label">Boost Count</span><span class="row-value" id="stats-boost-count">&mdash;</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOGS -->
+      <div class="panel-page" id="page-logs">
+        <div class="an-layout">
+          <div class="an-sidebar" id="log-sidebar">
+            <div class="an-sidebar-item active" data-an="security">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1529617120210714624.png" alt=""></div>
+              <span>Security</span>
+            </div>
+            <div class="an-sidebar-item" data-an="botusage">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1529665253804216502.png" alt=""></div>
+              <span>Bot Usage</span>
+            </div>
+            <div class="an-sidebar-item" data-an="regular">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530962162024190105.png" alt=""></div>
+              <span>Regular</span>
+            </div>
+            <div class="an-sidebar-item" data-an="exterminated">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647425235157052.png" alt=""></div>
+              <span>Exterminated</span>
+            </div>
+          </div>
+
+          <div class="an-main">
+            <!-- SECURITY -->
+            <div class="an-panel-content active" data-an-content="security">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1529617120210714624.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Security Logs</div><div class="an-sub">Bot add attempts, command spam, unauthorized access</div></div>
+                  <button class="log-head-readall" onclick="readAllLogs('log-security')">Read All</button>
+                </div>
+                <div class="an-body">
+                  <div class="log-list" id="log-security">
+                    <div class="wl-empty">No security events yet</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- BOT USAGE -->
+            <div class="an-panel-content" data-an-content="botusage">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1529665253804216502.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Bot Usage Logs</div><div class="an-sub">Command execution, user interactions</div></div>
+                  <button class="log-head-readall" onclick="readAllLogs('log-botusage')">Read All</button>
+                </div>
+                <div class="an-body">
+                  <div class="log-list" id="log-botusage">
+                    <div class="wl-empty">No command usage yet</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- REGULAR -->
+            <div class="an-panel-content" data-an-content="regular">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647406465650799.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Regular Logs</div><div class="an-sub">Deleted messages, edited messages, server changes</div></div>
+                  <button class="log-head-readall" onclick="readAllLogs('log-regular')">Read All</button>
+                </div>
+                <div class="an-body">
+                  <div class="log-list" id="log-regular">
+                    <div class="wl-empty">No regular logs yet</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- EXTERMINATED -->
+            <div class="an-panel-content" data-an-content="exterminated">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647425235157052.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Exterminated Users</div><div class="an-sub">Hard-banned users, click &#9432; to see who banned them</div></div>
+                  <button class="log-head-readall" onclick="readAllExterminated()">Read All</button>
+                </div>
+                <div class="an-body">
+                  <div class="log-list" id="log-exterminated">
+                    <div class="wl-empty">No exterminations</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANTI-NUKE -->
+      <div class="panel-page" id="page-antinuke">
+        <div class="an-layout">
+          <div class="an-sidebar" id="an-sidebar">
+            <div class="an-sidebar-item active" data-an="global">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1529617120210714624.png" alt=""></div>
+              <span>Global</span>
+            </div>
+            <div class="an-sidebar-item" data-an="webhook">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647459053703381.png" alt=""></div>
+              <span>Webhook</span>
+              <div class="an-sb-dot on" data-an-dot="webhook_create"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="ping">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647450560368811.png" alt=""></div>
+              <span>Ping</span>
+              <div class="an-sb-dot on" data-an-dot="mass_ping"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="channels">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647441169449122.png" alt=""></div>
+              <span>Channels</span>
+              <div class="an-sb-dot on" data-an-dot="channel_delete"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="roles">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647432214614026.png" alt=""></div>
+              <span>Roles</span>
+              <div class="an-sb-dot on" data-an-dot="role_delete"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="bans">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647425235157052.png" alt=""></div>
+              <span>Bans</span>
+              <div class="an-sb-dot on" data-an-dot="ban"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="kicks">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647425235157052.png" alt=""></div>
+              <span>Kicks</span>
+              <div class="an-sb-dot on" data-an-dot="kick"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="audit">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647406465650799.png" alt=""></div>
+              <span>Audit</span>
+              <div class="an-sb-dot on" data-an-dot="audit_change"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="lockdown">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530647416561209444.png" alt=""></div>
+              <span>Lockdown</span>
+              <div class="an-sb-dot off" data-an-dot="lockdown"></div>
+            </div>
+            <div class="an-sidebar-item" data-an="whitelist">
+              <div class="an-sb-emoji"><img src="https://cdn.discordapp.com/emojis/1530954537530032290.png" alt=""></div>
+              <span>Whitelist</span>
+            </div>
+          </div>
+
+          <div class="an-main">
+            <!-- GLOBAL -->
+            <div class="an-panel-content active" data-an-content="global">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1529617120210714624.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Global Settings</div><div class="an-sub">Master switch and timing for all protections</div></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle" id="an-enabled"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Window (seconds)</span><input class="input" style="width:60px;text-align:center" id="an-window" value="5"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- WEBHOOK -->
+            <div class="an-panel-content" data-an-content="webhook">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647459053703381.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Webhook Protection</div><div class="an-sub">Detects mass webhook creation</div></div>
+                  <div class="an-dot on" data-status="webhook_create"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle on" data-evt="webhook_create"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="webhook_create" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="webhook_create"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- PING -->
+            <div class="an-panel-content" data-an-content="ping">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647450560368811.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Ping Protection</div><div class="an-sub">Detects mass mentions and @everyone</div></div>
+                  <div class="an-dot on" data-status="mass_ping"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle on" data-evt="mass_ping"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="mass_ping" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="mass_ping"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                  <div class="an-row"><span class="an-label">Channel Whitelist</span><input class="input" style="width:170px" id="an-ping-channels" placeholder="Channel IDs, comma separated"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- CHANNELS -->
+            <div class="an-panel-content" data-an-content="channels">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647441169449122.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Channel Protection</div><div class="an-sub">Detects mass channel deletion</div></div>
+                  <div class="an-dot on" data-status="channel_delete"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle on" data-evt="channel_delete"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="channel_delete" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="channel_delete"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ROLES -->
+            <div class="an-panel-content" data-an-content="roles">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647432214614026.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Role Protection</div><div class="an-sub">Detects mass role deletion</div></div>
+                  <div class="an-dot on" data-status="role_delete"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle on" data-evt="role_delete"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="role_delete" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="role_delete"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- BANS -->
+            <div class="an-panel-content" data-an-content="bans">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647425235157052.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Ban Protection</div><div class="an-sub">Detects mass bans</div></div>
+                  <div class="an-dot on" data-status="ban"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle on" data-evt="ban"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="ban" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="ban"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- KICKS -->
+            <div class="an-panel-content" data-an-content="kicks">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647425235157052.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Kick Protection</div><div class="an-sub">Detects mass kicks</div></div>
+                  <div class="an-dot on" data-status="kick"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle on" data-evt="kick"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="kick" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="kick"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AUDIT -->
+            <div class="an-panel-content" data-an-content="audit">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647406465650799.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Audit Protection</div><div class="an-sub">Detects unauthorized audit log changes</div></div>
+                  <div class="an-dot on" data-status="audit_change"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Server Name Changes</span><div class="toggle on" data-evt="guild_update"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Role Changes</span><div class="toggle on" data-evt="role_update"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Channel Changes</span><div class="toggle on" data-evt="channel_update"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input evt-input" style="width:50px;text-align:center" data-evt="guild_update" data-field="threshold" value="1"></div>
+                  <div class="an-row"><span class="an-label">Punishment</span><div class="punish-select" data-evt="guild_update"><span class="punish-btn active" data-val="strip">Strip</span><span class="punish-btn" data-val="kick">Kick</span><span class="punish-btn danger" data-val="ban">Ban</span></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- LOCKDOWN -->
+            <div class="an-panel-content" data-an-content="lockdown">
+              <div class="an-panel">
+                <div class="an-head">
+                  <div class="an-emoji"><img src="https://cdn.discordapp.com/emojis/1530647416561209444.png" alt=""></div>
+                  <div class="an-info"><div class="an-title">Mass-Ban Lockdown</div><div class="an-sub">Auto-lockdown when mass bans detected</div></div>
+                  <div class="an-dot off" data-status="lockdown"></div>
+                </div>
+                <div class="an-body">
+                  <div class="an-row"><span class="an-label">Enabled</span><div class="toggle" id="an-lockdown"><span></span></div></div>
+                  <div class="an-row"><span class="an-label">Threshold</span><input class="input" style="width:50px;text-align:center" id="an-lockdown-th" value="3"></div>
+                  <div class="an-row"><span class="an-label">Access Role ID</span><input class="input" style="width:150px" id="an-lockdown-role" placeholder="Role ID"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- WHITELIST -->
+            <div class="an-panel-content" data-an-content="whitelist">
+              <div class="an-wl-card">
+                <div class="an-wl-head">
+                  <div class="an-title">Anti-Nuke Whitelist</div>
+                </div>
+                <div class="an-wl-body">
+                  <div class="row"><div class="input-row"><input class="input" style="width:130px" id="an-wl-add" placeholder="User ID"><button class="console-run" style="padding:6px 14px;font-size:9px" id="an-wl-add-btn">Add</button></div></div>
+                  <div id="an-wl-list" style="padding:4px 0"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- WHITELIST -->
+      <div class="panel-page" id="page-whitelist">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Standard Whitelist</span></div>
+            <div class="card-body">
+              <div class="row"><div class="input-row"><input class="input" style="width:130px" id="wl-add-std" placeholder="User ID"><button class="console-run" style="padding:6px 14px;font-size:9px" id="wl-add-std-btn">Add</button></div></div>
+              <div id="wl-std-list" style="padding:0 18px 4px"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Legacy Whitelist</span></div>
+            <div class="card-body">
+              <div class="row"><div class="input-row"><input class="input" style="width:130px" id="wl-add-leg" placeholder="User ID"><button class="console-run" style="padding:6px 14px;font-size:9px" id="wl-add-leg-btn">Add</button></div></div>
+              <div id="wl-leg-list" style="padding:0 18px 4px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLACKLIST -->
+      <div class="panel-page" id="page-blacklist">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Blacklist</span></div>
+          <div class="card-body">
+            <div class="row"><div class="input-row"><input class="input" style="width:130px" id="bl-add" placeholder="User ID"><button class="console-run" style="padding:6px 14px;font-size:9px" id="bl-add-btn">Add</button></div></div>
+            <div id="bl-list" style="padding:0 18px 4px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOGGING -->
+      <div class="panel-page" id="page-logging">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Channel</span></div>
+            <div class="card-body">
+              <div class="row"><span class="row-label">Log Channel</span><input class="input" style="width:150px" id="log-channel" placeholder="Channel ID"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Events</span></div>
+            <div class="card-body">
+              <div class="row"><span class="row-label">Bot Commands</span><div class="toggle" id="log-bot-commands"><span></span></div></div>
+              <div class="row"><span class="row-label">Anti-Nuke</span><div class="toggle on" id="log-antinuke"><span></span></div></div>
+              <div class="row"><span class="row-label">Moderation</span><div class="toggle on" id="log-moderation"><span></span></div></div>
+              <div class="row"><span class="row-label">Audit Changes</span><div class="toggle" id="log-audit"><span></span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- JOIN / LEAVE -->
+      <div class="panel-page" id="page-joinleave">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Join</span></div>
+            <div class="card-body">
+              <div class="row"><span class="row-label">Channel</span><input class="input" style="width:150px" id="jl-join-ch" placeholder="Channel ID"></div>
+              <div class="row"><span class="row-label">Message</span><input class="input" id="jl-join-msg" placeholder="Welcome {mention} to {server}!"></div>
+              <div class="row"><span class="row-label">GIF URL</span><input class="input" id="jl-join-gif" placeholder="https://..."></div>
+              <div style="padding:4px 18px 12px"><img class="gif-preview" id="jl-join-preview" src="" alt="Join GIF" style="display:none"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Leave</span></div>
+            <div class="card-body">
+              <div class="row"><span class="row-label">Channel</span><input class="input" style="width:150px" id="jl-leave-ch" placeholder="Channel ID"></div>
+              <div class="row"><span class="row-label">Message</span><input class="input" id="jl-leave-msg" placeholder="{user} left {server}."></div>
+              <div class="row"><span class="row-label">GIF URL</span><input class="input" id="jl-leave-gif" placeholder="https://..."></div>
+              <div style="padding:4px 18px 12px"><img class="gif-preview" id="jl-leave-preview" src="" alt="Leave GIF" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="signout-widget" id="signout-widget">
+  <img class="signout-avatar" id="signout-avatar" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar">
+  <div class="signout-info">
+    <div class="signout-name" id="signout-name">Discord User</div>
+    <div class="signout-meta" id="signout-meta">Signed in</div>
+    <button class="signout-btn" id="signout-btn" type="button">Sign Out</button>
+  </div>
+</div>
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-card">
+    <div class="confirm-title">Sign out?</div>
+    <div class="confirm-text">Are you sure you want to sign out of the dashboard?</div>
+    <div class="confirm-actions">
+      <button class="confirm-action no" id="confirm-no" type="button">No</button>
+      <button class="confirm-action yes" id="confirm-yes" type="button">Yes</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Saved</div>
+<div class="log-detail-overlay" id="log-detail-overlay">
+  <div class="log-detail-card">
+    <div class="log-detail-title" id="log-detail-title">Details</div>
+    <div id="log-detail-body"></div>
+    <button class="log-detail-close" id="log-detail-close">Close</button>
+  </div>
+</div>
+
+<script>
+const audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+function playClick(){if(audioCtx.state==='suspended')audioCtx.resume();const t=audioCtx.currentTime;const osc=audioCtx.createOscillator();const osc2=audioCtx.createOscillator();const gain=audioCtx.createGain();const gain2=audioCtx.createGain();osc.connect(gain);osc2.connect(gain2);gain.connect(audioCtx.destination);gain2.connect(audioCtx.destination);osc.frequency.value=3500+Math.random()*500;osc.type='square';osc2.frequency.value=100+Math.random()*50;osc2.type='sine';gain.gain.setValueAtTime(0.012,t);gain.gain.exponentialRampToValueAtTime(0.001,t+0.015);gain2.gain.setValueAtTime(0.02,t);gain2.gain.exponentialRampToValueAtTime(0.001,t+0.02);osc.start(t);osc.stop(t+0.015);osc2.start(t);osc2.stop(t+0.02)}
+document.addEventListener('keydown',e=>{const tag=e.target.tagName;if(tag==='INPUT'||tag==='TEXTAREA'){if(e.key.length===1||e.key==='Backspace')playClick()}});
+
+(function(){
+  var el=document.getElementById('loading-text');
+  var letters='JINN'.split('');
+  var i=0;
+  function next(){if(i>=letters.length)return;el.textContent=(el.textContent?el.textContent+' ':'')+letters[i];i++;setTimeout(next,180)}
+  next();
+})();
+
+fetch('/api/session',{credentials:'include'}).then(function(r){return r.json()}).then(function(d){
+  if(d.bot_avatar){
+    document.getElementById('loading-bot-icon').src=d.bot_avatar;
+    var link=document.querySelector("link[rel~='icon']");
+    if(!link){link=document.createElement('link');link.rel='icon';document.head.appendChild(link)}
+    link.href=d.bot_avatar;
+  }
+}).catch(function(){});
+
+const cvs=document.getElementById('particles'),ctx=cvs.getContext('2d');
+let W,H,parts=[],mouse={x:-9999,y:-9999};
+function resize(){W=cvs.width=innerWidth;H=cvs.height=innerHeight}
+resize();addEventListener('resize',resize);
+addEventListener('mousemove',e=>{mouse={x:e.clientX,y:e.clientY}});
+class P{constructor(){this.x=Math.random()*W;this.y=Math.random()*H;this.vx=(Math.random()-.5)*.3;this.vy=(Math.random()-.5)*.3;this.r=Math.random()*1.2+.4}update(){this.x+=this.vx;this.y+=this.vy;if(this.x<0||this.x>W)this.vx*=-1;if(this.y<0||this.y>H)this.vy*=-1;const dx=mouse.x-this.x,dy=mouse.y-this.y,d=Math.sqrt(dx*dx+dy*dy);if(d<180){const f=(180-d)/180*.015;this.vx-=dx*f*.01;this.vy-=dy*f*.01}}draw(){ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fillStyle='rgba(168,216,234,.35)';ctx.fill()}}
+for(let i=0;i<60;i++)parts.push(new P);
+function anim(){ctx.clearRect(0,0,W,H);parts.forEach(p=>{p.update();p.draw()});for(let i=0;i<parts.length;i++)for(let j=i+1;j<parts.length;j++){const dx=parts[i].x-parts[j].x,dy=parts[i].y-parts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<120){ctx.beginPath();ctx.moveTo(parts[i].x,parts[i].y);ctx.lineTo(parts[j].x,parts[j].y);ctx.strokeStyle=`rgba(168,216,234,${(1-d/120)*.15})`;ctx.lineWidth=.4;ctx.stroke()}}requestAnimationFrame(anim)}
+anim();
+
+function $(id){return document.getElementById(id)}
+function $$(sel,root){return(root||document).querySelectorAll(sel)}
+function showToast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1500)}
+function updateUserSession(data){
+  var username=typeof data.username==='string'&&data.username?data.username:'Discord User';
+  username=username.replace(/#0$/,'');
+  $('signout-name').textContent=username;
+  $('signout-meta').textContent='Signed in';
+  var avatarUrl=data.avatar||'';
+  if(avatarUrl){$('signout-avatar').src=avatarUrl}
+  else{var id=(data.user_id||data.username||'0').toString();var parsed=parseInt(id,10);var avatarIndex=Number.isNaN(parsed)?(id.split('').reduce(function(s,c){return s+c.charCodeAt(0)},0)%5):Math.abs(parsed)%5;$('signout-avatar').src='https://cdn.discordapp.com/embed/avatars/'+avatarIndex+'.png'}
+  if(data.bot_avatar){
+    var link=document.querySelector("link[rel~='icon']");
+    if(!link){link=document.createElement('link');link.rel='icon';document.head.appendChild(link)}
+    link.href=data.bot_avatar;
+  }
+}
+function setToggle(el,on){if(!el)return;if(on)el.classList.add('on');else el.classList.remove('on')}
+function isOn(el){return el.classList.contains('on')}
+
+let saveTimers={};
+function save(key,val){clearTimeout(saveTimers[key]);saveTimers[key]=setTimeout(async()=>{try{await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key,value:val})});showToast('Saved')}catch(e){showToast('Error')}},400)}
+
+let authed=false;
+async function checkAuth(){
+  try{const r=await fetch('/api/session',{credentials:'include'});const d=await r.json();
+    if(d.authenticated){authed=true;$('nav-auth').textContent='Dashboard';$('nav-auth').onclick=()=>location.href='/dashboard';updateUserSession(d);if(d.bot_avatar){$('loading-bot-icon').src=d.bot_avatar}}
+    else{window.location.href='/login';return false}
+  }catch(e){window.location.href='/login';return false}
+  return true;
+}
+
+setInterval(async()=>{
+  if(!authed)return;
+  try{const r=await fetch('/api/session',{credentials:'include'});const d=await r.json();
+    if(!d.authenticated){window.location.href='/login'}
+  }catch(e){}
+},30000);
+
+$$('.sidebar-item').forEach(function(el){
+  el.addEventListener('click',function(){
+    var page=this.getAttribute('data-page');
+    $$('.sidebar-item').forEach(function(i){i.classList.remove('active')});
+    $$('.panel-page').forEach(function(p){p.classList.remove('active')});
+    this.classList.add('active');
+    var target=$('page-'+page);
+    if(target)target.classList.add('active');
+  });
+});
+
+$$('.an-sidebar-item').forEach(function(item){
+  item.addEventListener('click',function(){
+    var cat=this.getAttribute('data-an');
+    var sidebar=this.closest('.an-sidebar');
+    sidebar.querySelectorAll('.an-sidebar-item').forEach(function(i){i.classList.remove('active')});
+    this.classList.add('active');
+    var layout=this.closest('.an-layout');
+    layout.querySelectorAll('.an-panel-content').forEach(function(c){c.classList.remove('active')});
+    var target=layout.querySelector('.an-panel-content[data-an-content="'+cat+'"]');
+    if(target)target.classList.add('active');
+  });
+});
+
+$('an-enabled').addEventListener('click',function(){this.classList.toggle('on');save('antinuke.enabled',isOn(this))});
+$('an-window').addEventListener('change',function(){save('antinuke.window_seconds',parseInt(this.value)||5)});
+
+$$('.toggle[data-evt]').forEach(function(el){
+  el.addEventListener('click',function(){
+    this.classList.toggle('on');
+    save('antinuke.events.'+this.getAttribute('data-evt')+'.enabled',isOn(this));
+    var evtName=this.getAttribute('data-evt');
+    var dot=document.querySelector('.an-dot[data-status="'+evtName+'"]');
+    if(dot){dot.classList.toggle('on',isOn(this));dot.classList.toggle('off',!isOn(this))}
+    var sbDot=document.querySelector('.an-sb-dot[data-an-dot="'+evtName+'"]');
+    if(sbDot){sbDot.classList.toggle('on',isOn(this));sbDot.classList.toggle('off',!isOn(this))}
+  });
+});
+
+$$('.evt-input').forEach(function(inp){
+  inp.addEventListener('change',function(){
+    save('antinuke.events.'+this.getAttribute('data-evt')+'.threshold',parseInt(this.value)||1);
+  });
+});
+
+$$('.punish-select[data-evt]').forEach(function(sel){
+  $$('.punish-btn',sel).forEach(function(btn){
+    btn.addEventListener('click',function(){
+      $$('.punish-btn',sel).forEach(function(b){b.classList.remove('active')});
+      this.classList.add('active');
+      save('antinuke.events.'+sel.getAttribute('data-evt')+'.punishment',this.getAttribute('data-val'));
+    });
+  });
+});
+
+$('an-lockdown').addEventListener('click',function(){this.classList.toggle('on');save('antinuke.massban_lockdown.enabled',isOn(this));var dot=document.querySelector('.an-dot[data-status="lockdown"]');if(dot){dot.classList.toggle('on',isOn(this));dot.classList.toggle('off',!isOn(this))}var sbDot=document.querySelector('.an-sb-dot[data-an-dot="lockdown"]');if(sbDot){sbDot.classList.toggle('on',isOn(this));sbDot.classList.toggle('off',!isOn(this))}});
+$('an-lockdown-th').addEventListener('change',function(){save('antinuke.massban_lockdown.threshold',parseInt(this.value)||3)});
+$('an-lockdown-role').addEventListener('change',function(){save('antinuke.massban_lockdown.access_role_id',this.value||null)});
+$('an-ping-channels').addEventListener('change',function(){save('antinuke.ping_channel_whitelist',this.value.split(',').map(function(s){return parseInt(s.trim())}).filter(Boolean))});
+
+function renderAnWl(ids,userInfo){
+  var c=$('an-wl-list');
+  if(!ids||!ids.length){c.innerHTML='<div class="wl-empty">No users whitelisted</div>';return}
+  userInfo=userInfo||window._allUserInfo||{};
+  c.innerHTML=ids.map(function(uid){
+    uid=String(uid);
+    var u=userInfo[uid];
+    if(!u){
+      var lastDigit=parseInt(uid.charAt(uid.length-1),10)||0;
+      var avIdx=lastDigit%5;
+      u={display:uid,avatar:'https://cdn.discordapp.com/embed/avatars/'+avIdx+'.png'};
+    }
+    return '<div class="wl-user"><img class="wl-user-avatar" src="'+u.avatar+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+u.display+'</div><div class="wl-user-id">'+uid+'</div></div><span class="remove" data-uid="'+uid+'">&times;</span></div>';
+  }).join('');
+  $$('.remove',c).forEach(function(r){r.addEventListener('click',function(){
+    var uid=String(this.getAttribute('data-uid'));
+    var currentIds=(window._anWlIds||[]).map(function(id){return String(id)}).filter(function(id){return id!==uid});
+    window._anWlIds=currentIds;
+    save('antinuke.whitelist',currentIds);
+    renderAnWl(currentIds,userInfo);
+    showToast('Removed');
+  })});
+}
+$('an-wl-add-btn').addEventListener('click',async function(){
+  var input=$('an-wl-add');var uid=String(input.value.trim());if(!uid)return;
+  var currentIds=(window._anWlIds||[]).map(function(id){return String(id)});
+  if(currentIds.indexOf(uid)!==-1){showToast('Already whitelisted');return}
+  currentIds.push(uid);
+  window._anWlIds=currentIds;
+  save('antinuke.whitelist',currentIds);
+  input.value='';
+  renderAnWl(currentIds,window._anWlUserInfo||{});
+  showToast('Added');
+});
+
+$('log-bot-commands').addEventListener('click',function(){this.classList.toggle('on');save('logging_events.bot_commands',isOn(this))});
+$('log-antinuke').addEventListener('click',function(){this.classList.toggle('on');save('logging_events.antinuke',isOn(this))});
+$('log-moderation').addEventListener('click',function(){this.classList.toggle('on');save('logging_events.moderation',isOn(this))});
+$('log-audit').addEventListener('click',function(){this.classList.toggle('on');save('logging_events.audit_change',isOn(this))});
+$('log-channel').addEventListener('change',function(){save('logging_channel_id',this.value.trim()||null)});
+
+$('jl-join-ch').addEventListener('change',function(){save('join_channel_id',this.value.trim()||null)});
+$('jl-join-msg').addEventListener('change',function(){save('join_message',this.value)});
+$('jl-join-gif').addEventListener('change',function(){save('join_gif',this.value);previewGif('jl-join-gif','jl-join-preview')});
+$('jl-leave-ch').addEventListener('change',function(){save('leave_channel_id',this.value.trim()||null)});
+$('jl-leave-msg').addEventListener('change',function(){save('leave_message',this.value)});
+$('jl-leave-gif').addEventListener('change',function(){save('leave_gif',this.value);previewGif('jl-leave-gif','jl-leave-preview')});
+function previewGif(inputId,imgId){var url=$(inputId).value.trim();var img=$(imgId);if(url){img.src=url;img.style.display='block'}else{img.style.display='none'}}
+
+$('s-prefix').addEventListener('change',function(){save('prefix',this.value||',')});
+
+$('guild-edit-btn').addEventListener('click',function(){
+  var row=$('guild-edit-row');
+  row.classList.add('editing');
+  var input=$('s-guild-id-input');
+  input.value=$('s-guild-id').textContent;
+  input.focus();
+  input.select();
+});
+$('s-guild-id-input').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){
+    var val=this.value.trim();
+    if(val){save('allowed_guild_id',parseInt(val)||val);showToast('Guild saved');$('s-guild-id').textContent=val}
+    $('guild-edit-row').classList.remove('editing');
+  }
+  if(e.key==='Escape'){$('guild-edit-row').classList.remove('editing')}
+});
+$('s-guild-id-input').addEventListener('blur',function(){
+  $('guild-edit-row').classList.remove('editing');
+});
+
+function renderWl(id,users,userInfo){
+  var c=$(id);
+  if(!users||!users.length){c.innerHTML='<div class="wl-empty">No users whitelisted</div>';return}
+  userInfo=userInfo||{};
+  c.innerHTML=users.map(function(uid){
+    uid=String(uid);
+    var u=userInfo[uid];
+    if(!u){var lastDigit=parseInt(uid.charAt(uid.length-1),10)||0;u={display:uid,avatar:'https://cdn.discordapp.com/embed/avatars/'+(lastDigit%5)+'.png'}}
+    return '<div class="wl-user"><img class="wl-user-avatar" src="'+u.avatar+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+u.display+'</div><div class="wl-user-id">'+uid+'</div></div><span class="remove" data-uid="'+uid+'">&times;</span></div>';
+  }).join('');
+  $$('.remove',c).forEach(function(r){r.addEventListener('click',function(){removeWl(this.getAttribute('data-uid'))})});
+}
+async function addWl(type){
+  var input=$(type==='standard'?'wl-add-std':'wl-add-leg');
+  var uid=input.value.trim();if(!uid)return;
+  try{var r=await fetch('/api/whitelist',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({action:'add',user_id:uid,type:type})});var d=await r.json();if(d.success){input.value='';loadSettings();showToast('Added')}else{showToast(d.error||'Error')}}catch(e){showToast('Error')}
+}
+async function removeWl(uid){
+  try{var r=await fetch('/api/whitelist',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({action:'remove',user_id:String(uid)})});var d=await r.json();if(d.success){loadSettings();showToast('Removed')}else{showToast(d.error||'Error')}}catch(e){showToast('Error')}
+}
+$('wl-add-std-btn').addEventListener('click',function(){addWl('standard')});
+$('wl-add-leg-btn').addEventListener('click',function(){addWl('legacy')});
+
+function renderBl(ids,userInfo){
+  var c=$('bl-list');
+  if(!ids||!ids.length){c.innerHTML='<div class="wl-empty">No users blacklisted</div>';return}
+  userInfo=userInfo||{};
+  c.innerHTML=ids.map(function(uid){
+    uid=String(uid);
+    var u=userInfo[uid];
+    if(!u){var lastDigit=parseInt(uid.charAt(uid.length-1),10)||0;u={display:uid,avatar:'https://cdn.discordapp.com/embed/avatars/'+(lastDigit%5)+'.png'}}
+    return '<div class="wl-user"><img class="wl-user-avatar" src="'+u.avatar+'" alt=""><div class="wl-user-info"><div class="wl-user-name">'+u.display+'</div><div class="wl-user-id">'+uid+'</div></div><span class="remove" data-uid="'+uid+'">&times;</span></div>';
+  }).join('');
+  $$('.remove',c).forEach(function(r){r.addEventListener('click',function(){removeBl(this.getAttribute('data-uid'))})});
+}
+async function addBl(){
+  var input=$('bl-add');var uid=input.value.trim();if(!uid)return;
+  try{var r=await fetch('/api/blacklist',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({action:'add',user_id:uid})});var d=await r.json();if(d.success){input.value='';loadSettings();showToast('Added')}else{showToast(d.error||'Error')}}catch(e){showToast('Error')}
+}
+async function removeBl(uid){
+  try{var r=await fetch('/api/blacklist',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({action:'remove',user_id:String(uid)})});var d=await r.json();if(d.success){loadSettings();showToast('Removed')}else{showToast(d.error||'Error')}}catch(e){showToast('Error')}
+}
+$('bl-add-btn').addEventListener('click',function(){addBl()});
+
+function addLine(text,type){var l=document.createElement('div');l.className='line'+(type?' '+type:'');l.textContent=text;$('console-output').appendChild(l);$('console-output').scrollTop=$('console-output').scrollHeight}
+function addHTML(html){var d=document.createElement('div');d.className='line';d.innerHTML=html;$('console-output').appendChild(d);$('console-output').scrollTop=$('console-output').scrollHeight}
+$('console-run-btn').addEventListener('click',function(){
+  var cmd=$('console-input').value.trim();if(!cmd)return;
+  addHTML('<span class="prompt">&gt;</span> '+cmd);$('console-input').value='';
+  fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({command:cmd})}).then(function(r){return r.json()}).then(function(d){if(d.output)d.output.split('\n').forEach(function(l){addLine(l)});if(d.error)addLine(d.error,'error')}).catch(function(){addLine('Could not connect to server','error')});
+});
+$('console-input').addEventListener('keydown',function(e){if(e.key==='Enter')$('console-run-btn').click()});
+$('wl-add-std').addEventListener('keydown',function(e){if(e.key==='Enter')$('wl-add-std-btn').click()});
+$('wl-add-leg').addEventListener('keydown',function(e){if(e.key==='Enter')$('wl-add-leg-btn').click()});
+$('bl-add').addEventListener('keydown',function(e){if(e.key==='Enter')$('bl-add-btn').click()});
+$('an-wl-add').addEventListener('keydown',function(e){if(e.key==='Enter')$('an-wl-add-btn').click()});
+$('signout-btn').addEventListener('click',function(){document.getElementById('confirm-overlay').classList.add('active')});
+$('confirm-no').addEventListener('click',function(){document.getElementById('confirm-overlay').classList.remove('active')});
+$('confirm-yes').addEventListener('click',async function(){try{await fetch('/api/logout',{method:'POST',credentials:'include'});window.location.href='/login'}catch(e){showToast('Sign out failed')}});
+
+const signoutWidget=$('signout-widget');
+let dragState={active:false,offsetX:0,offsetY:0};
+signoutWidget.addEventListener('mousedown',function(e){if(e.target.closest('.signout-btn'))return;dragState.active=true;dragState.offsetX=e.clientX - signoutWidget.getBoundingClientRect().left;dragState.offsetY=e.clientY - signoutWidget.getBoundingClientRect().top;document.body.style.userSelect='none';});
+window.addEventListener('mousemove',function(e){if(!dragState.active)return;let x=e.clientX-dragState.offsetX;let y=e.clientY-dragState.offsetY;x=Math.max(12,Math.min(window.innerWidth-signoutWidget.offsetWidth-12,x));y=Math.max(12,Math.min(window.innerHeight-signoutWidget.offsetHeight-12,y));signoutWidget.style.left=x+'px';signoutWidget.style.top=y+'px';signoutWidget.style.right='auto';signoutWidget.style.bottom='auto';});
+window.addEventListener('mouseup',function(){if(dragState.active){dragState.active=false;document.body.style.userSelect='auto';}});
+
+async function loadSettings(){
+  try{var r=await fetch('/api/settings',{credentials:'include'});var d=await r.json();if(d.error)return;
+
+    $('s-guild-id').textContent=d.guild?d.guild.id:'—';
+    $('s-members').textContent=d.guild?d.guild.member_count:'—';
+
+    if(d.guild){
+      $('stats-name').textContent=d.guild.name||'—';
+      $('stats-id').textContent=d.guild.id||'—';
+      $('stats-members').textContent=d.guild.member_count||'—';
+      $('stats-roles').textContent=d.guild.role_count!=null?d.guild.role_count:'—';
+      $('stats-channels').textContent=d.guild.channel_count!=null?d.guild.channel_count:'—';
+      $('stats-emojis').textContent=d.guild.emoji_count!=null?d.guild.emoji_count:'—';
+      $('stats-boost').textContent=d.guild.premium_tier!=null?'Tier '+d.guild.premium_tier:'None';
+      $('stats-boost-count').textContent=d.guild.premium_subscription_count||'0';
+    }
+
+    var an=d.antinuke||{};
+    setToggle($('an-enabled'),an.enabled);
+    $('an-window').value=an.window_seconds||5;
+
+    var evts=an.events||{};
+    $$('.toggle[data-evt]').forEach(function(el){
+      var evt=evts[el.getAttribute('data-evt')];
+      var on=evt&&typeof evt==='object'?evt.enabled:!!evt;
+      setToggle(el,on);
+      var evtName=el.getAttribute('data-evt');
+      var dot=document.querySelector('.an-dot[data-status="'+evtName+'"]');
+      if(dot){dot.classList.toggle('on',on);dot.classList.toggle('off',!on)}
+      var sbDot=document.querySelector('.an-sb-dot[data-an-dot="'+evtName+'"]');
+      if(sbDot){sbDot.classList.toggle('on',on);sbDot.classList.toggle('off',!on)}
+    });
+    $$('.evt-input').forEach(function(inp){
+      var evt=evts[inp.getAttribute('data-evt')];
+      inp.value=(evt&&typeof evt==='object'?evt.threshold:1)||1;
+    });
+    $$('.punish-select[data-evt]').forEach(function(sel){
+      var evt=evts[sel.getAttribute('data-evt')];
+      var p=(evt&&typeof evt==='object'?evt.punishment:'strip')||'strip';
+      $$('.punish-btn',sel).forEach(function(b){if(b.getAttribute('data-val')===p)b.classList.add('active');else b.classList.remove('active')});
+    });
+
+    var lk=an.massban_lockdown||{};
+    setToggle($('an-lockdown'),lk.enabled);
+    $('an-lockdown-th').value=lk.threshold||3;
+    $('an-lockdown-role').value=lk.access_role_id||'';
+    $('an-ping-channels').value=(an.ping_channel_whitelist||[]).join(', ');
+    var lkDot=document.querySelector('.an-dot[data-status="lockdown"]');
+    if(lkDot){lkDot.classList.toggle('on',!!lk.enabled);lkDot.classList.toggle('off',!lk.enabled)}
+    var lkSbDot=document.querySelector('.an-sb-dot[data-an-dot="lockdown"]');
+    if(lkSbDot){lkSbDot.classList.toggle('on',!!lk.enabled);lkSbDot.classList.toggle('off',!lk.enabled)}
+
+    window._anWlIds=an.whitelist||[];
+    window._anWlUserInfo=d.user_info||{};
+    renderAnWl(window._anWlIds,window._anWlUserInfo);
+
+    var le=d.logging_events||{};
+    setToggle($('log-bot-commands'),le.bot_commands);
+    setToggle($('log-antinuke'),le.antinuke);
+    setToggle($('log-moderation'),le.moderation);
+    setToggle($('log-audit'),le.audit_change);
+    $('log-channel').value=d.logging_channel_id||'';
+
+    $('jl-join-ch').value=d.join_channel_id||'';
+    $('jl-join-msg').value=d.join_message||'';
+    $('jl-join-gif').value=d.join_gif||'';
+    previewGif('jl-join-gif','jl-join-preview');
+    $('jl-leave-ch').value=d.leave_channel_id||'';
+    $('jl-leave-msg').value=d.leave_message||'';
+    $('jl-leave-gif').value=d.leave_gif||'';
+    previewGif('jl-leave-gif','jl-leave-preview');
+
+    renderWl('wl-std-list',d.whitelist_standard||[],d.user_info||{});
+    renderWl('wl-leg-list',d.whitelist_legacy||[],d.user_info||{});
+    renderBl(d.blacklist||[],d.user_info||{});
+    window._allUserInfo=d.user_info||{};
+    loadLogs();
+  }catch(e){console.error(e)}
+}
+
+var _dismissedLogs=JSON.parse(localStorage.getItem('dismissedLogs')||'{}');
+function _isDismissed(id){return !!_dismissedLogs[id]}
+function _dismissLog(id){_dismissedLogs[id]=1;localStorage.setItem('dismissedLogs',JSON.stringify(_dismissedLogs));fetch('/api/logs/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({id:id})}).catch(function(){})}
+
+async function loadLogs(){
+  try{
+    var r=await fetch('/api/logs',{credentials:'include'});
+    if(!r.ok)return;
+    var d=await r.json();
+    if(d.error)return;
+    if(d.dismissed){d.dismissed.forEach(function(id){_dismissedLogs[id]=1});localStorage.setItem('dismissedLogs',JSON.stringify(_dismissedLogs))}
+    renderLogList('log-security',d.security||[],true);
+    renderLogList('log-botusage',d.bot_usage||[],false);
+    renderLogList('log-regular',d.regular||[],false);
+    renderExterminated(d.exterminated||[]);
+  }catch(e){}
+}
+
+function renderLogList(cid,entries,showInfo){
+  var c=$(cid);
+  if(!c)return;
+  var filtered=entries.filter(function(e){return !_isDismissed(e.id||'')});
+  var visible=filtered.slice(0,50);
+  if(!visible.length){c.innerHTML='<div class="wl-empty">No entries yet</div>';return}
+  c.innerHTML=visible.map(function(e){
+    var logId=e.id||'';
+    var avatar=e.avatar||'https://cdn.discordapp.com/embed/avatars/0.png';
+    var tagClass=e.type==='security'?'security':e.type==='command'?'command':'info';
+    var tagLabel=e.type==='security'?'SECURITY':e.type==='command'?'CMD':'LOG';
+    var infoBtn=showInfo&&e.details?'<span class="log-entry-info" onclick="showLogDetail(this)" data-details=\''+JSON.stringify(e.details).replace(/'/g,'&#39;')+'\'>&#9432;</span>':'';
+    var dismissBtn='<span class="log-dismiss" onclick="dismissLog(\''+logId+'\')">&times;</span>';
+    return '<div class="log-entry" id="log-'+logId+'"><img class="log-entry-avatar" src="'+avatar+'" alt=""><div class="log-entry-body"><div class="log-entry-header"><span class="log-entry-tag '+tagClass+'">'+tagLabel+'</span><span class="log-entry-user">'+(e.user||'System')+'</span><span class="log-entry-time">'+(e.time||'')+'</span>'+infoBtn+'</div><div class="log-entry-text">'+(e.text||'')+'</div></div>'+dismissBtn+'</div>';
+  }).join('');
+}
+
+function dismissLog(logId){
+  _dismissLog(logId);
+  var el=$('log-'+logId);
+  if(el)el.remove();
+}
+
+function readAllLogs(cid){
+  var container=$(cid);
+  if(!container)return;
+  container.querySelectorAll('.log-entry').forEach(function(el){
+    var id=el.id.replace('log-','');
+    _dismissLog(id);
+  });
+  container.innerHTML='<div class="wl-empty">No entries yet</div>';
+}
+
+function renderExterminated(exts){
+  var c=$('log-exterminated');
+  if(!c)return;
+  var visible=exts.filter(function(e){return !_isDismissed(e.id||'')});
+  if(!visible.length){c.innerHTML='<div class="wl-empty">No exterminations</div>';return}
+  c.innerHTML=visible.map(function(e){
+    var logId=e.id||'';
+    var info=JSON.stringify({Target:e.display+' ('+e.user+')',ExterminatedBy:e.created_by_name+' ('+e.created_by+')',Reason:e.reason,Date:e.time}).replace(/'/g,'&#39;');
+    var infoBtn='<span class="log-entry-info" onclick="showLogDetail(this)" data-details=\''+info+'\'>&#9432;</span>';
+    var dismissBtn='<span class="log-dismiss" onclick="dismissLog(\''+logId+'\')">&times;</span>';
+    return '<div class="log-entry" id="log-'+logId+'"><img class="log-entry-avatar" src="'+e.avatar+'" alt=""><div class="log-entry-body"><div class="log-entry-header"><span class="log-entry-tag security">EXTERMINATED</span><span class="log-entry-user">'+(e.display||e.user)+'</span><span class="log-entry-time">'+(e.time||'')+'</span>'+infoBtn+'</div><div class="log-entry-text">Banned by '+e.created_by_name+' &mdash; '+e.reason+'</div></div>'+dismissBtn+'</div>';
+  }).join('');
+}
+
+function readAllExterminated(){
+  var container=$('log-exterminated');
+  if(!container)return;
+  container.querySelectorAll('.log-entry').forEach(function(el){
+    var id=el.id.replace('log-','');
+    _dismissLog(id);
+  });
+  container.innerHTML='<div class="wl-empty">No exterminations</div>';
+}
+
+function showLogDetail(el){
+  try{
+    var details=JSON.parse(el.getAttribute('data-details'));
+    var body=$('log-detail-body');
+    var html='';
+    for(var k in details){
+      if(details.hasOwnProperty(k)){
+        html+='<div class="log-detail-row"><span class="log-detail-label">'+k+'</span><span class="log-detail-val">'+details[k]+'</span></div>';
+      }
+    }
+    body.innerHTML=html;
+    $('log-detail-overlay').classList.add('active');
+  }catch(e){}
+}
+$('log-detail-close').addEventListener('click',function(){$('log-detail-overlay').classList.remove('active')});
+$('log-detail-overlay').addEventListener('click',function(e){if(e.target===this)this.classList.remove('active')});
+
+setInterval(function(){if(authed)loadLogs()},5000);
+
+checkAuth().then(function(){
+  return loadSettings();
+}).then(function(){
+  setTimeout(function(){
+    $('loading-screen').classList.add('done');
+    setTimeout(function(){$('loading-screen').remove()},500);
+  },800);
+});
+</script>
+</body>
+</html>
