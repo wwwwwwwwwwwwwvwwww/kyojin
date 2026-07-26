@@ -197,18 +197,25 @@ class WebServer:
     async def handle_api_verify(self, request: web.Request) -> web.Response:
         ip = get_client_ip(request)
         if not rate_limit(ip):
+            add_log("security", "Verify rate limited", user=ip, log_type="security")
             return web.json_response({"success": False, "error": "Rate limited"}, status=429)
 
         code = request.query.get("code")
         if not code or len(code) > 200:
+            add_log("security", "Verify: invalid code param", user=ip, log_type="security")
             return web.json_response({"success": False, "error": "Invalid code"}, status=400)
+
+        add_log("security", f"Verify: exchanging code from {ip}", user=ip, log_type="security")
 
         token_data = await self.exchange_code(code)
         if not token_data or "access_token" not in token_data:
+            err_detail = str(token_data) if token_data else "None"
+            add_log("security", f"Verify: code exchange failed — {err_detail}", user=ip, log_type="security")
             return web.json_response({"success": False, "error": "Invalid or expired code"})
 
         user = await self.get_user(token_data["access_token"])
         if not user:
+            add_log("security", "Verify: get_user failed", user=ip, log_type="security")
             return web.json_response({"success": False, "error": "Failed to get user info"})
 
         user_id = user["id"]
@@ -216,12 +223,19 @@ class WebServer:
         disc = user.get("discriminator", "0")
         display = f"@{username}" if disc == "0" else f"@{username}#{disc}"
 
+        add_log("security", f"Verify: user {display} ({user_id}) — adding to guild", user=display, log_type="security")
+
         if not await self.add_to_guild(token_data["access_token"], user_id):
+            add_log("security", f"Verify: add_to_guild failed for {user_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Failed to add you to the server"})
 
+        add_log("security", f"Verify: assigned role to {display}", user=display, log_type="security")
+
         if not await self.give_verify_role(user_id):
+            add_log("security", f"Verify: give_verify_role failed for {user_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Failed to assign role"})
 
+        add_log("security", f"Verify: success for {display}", user=display, log_type="security")
         return web.json_response({"success": True, "username": display})
 
     async def handle_api_login(self, request: web.Request) -> web.Response:
