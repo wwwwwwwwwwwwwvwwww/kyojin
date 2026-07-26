@@ -122,9 +122,6 @@ class WebServer:
         self.client_id = self.config.get("oauth_client_id", "")
         self.client_secret = self.config.get("oauth_client_secret", "")
         self.redirect_uri = self.config.get("oauth_redirect_uri", "http://localhost:5000/verify")
-        railway_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
-        if railway_url:
-            self.redirect_uri = f"https://{railway_url}/verify"
 
     async def exchange_code(self, code: str) -> dict | None:
         data = {
