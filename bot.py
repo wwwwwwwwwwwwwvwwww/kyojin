@@ -120,6 +120,8 @@ class SecurityBot(commands.Bot):
             case_insensitive=True,
         )
         self.db = Database("securitybot.db")
+        self._web_runner = None
+        self._web_site = None
 
     async def setup_hook(self) -> None:
         await self.db.connect()

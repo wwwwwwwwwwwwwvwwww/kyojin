@@ -813,3 +813,5 @@ async def start_web_server(bot: discord.Client) -> None:
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+    bot._web_runner = runner
+    bot._web_site = site
