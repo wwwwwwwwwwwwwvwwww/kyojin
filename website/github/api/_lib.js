@@ -2,7 +2,9 @@ const crypto = require('crypto');
 
 const SECRET = process.env.SESSION_SECRET || 'jinn-default-secret-change-me';
 const ADMIN_HASH = process.env.ADMIN_PASSWORD_HASH || '6958f2c65a4d20915286ebd1fed07e0a83c1f9a84ea4ba3362cbd1d6bfa50e02';
-const BOT_URL = process.env.BOT_URL || '';
+let BOT_URL = (process.env.BOT_URL || '').trim();
+if (BOT_URL.endsWith('/')) BOT_URL = BOT_URL.slice(0, -1);
+if (BOT_URL.endsWith('/api')) BOT_URL = BOT_URL.slice(0, -4);
 
 function getBotUrl() {
   if (!BOT_URL) {
