@@ -259,9 +259,6 @@ class WebServer:
             return web.json_response({"success": False, "error": "Failed to assign role"})
 
         add_log("security", f"Verify: assigned role to {display}", user=display, log_type="security")
-            add_log("security", f"Verify: give_verify_role failed for {user_id} in guild {guild_id}", user=display, log_type="security")
-            return web.json_response({"success": False, "error": "Failed to assign role"})
-
         add_log("security", f"Verify: success for {display}", user=display, log_type="security")
         return web.json_response({"success": True, "username": display})
 
