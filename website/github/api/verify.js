@@ -1,4 +1,4 @@
-const { BOT_URL } = require('./_lib');
+const { getBotUrl } = require('./_lib');
 
 module.exports = async (req, res) => {
   const code = req.query.code;
@@ -6,6 +6,7 @@ module.exports = async (req, res) => {
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
 
   try {
+    const BOT_URL = getBotUrl();
     let url = `${BOT_URL}/api/verify?code=${encodeURIComponent(code)}`;
     if (state) {
       url += `&state=${encodeURIComponent(state)}`;

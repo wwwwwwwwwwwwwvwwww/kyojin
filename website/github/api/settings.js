@@ -1,4 +1,4 @@
-const { BOT_URL } = require('./_lib');
+const { getBotUrl } = require('./_lib');
 
 module.exports = async function handler(req, res) {
   const cookies = req.headers.cookie || '';
@@ -13,6 +13,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    const BOT_URL = getBotUrl();
     const resp = await fetch(`${BOT_URL}/api/settings`, {
       method: req.method,
       headers: {

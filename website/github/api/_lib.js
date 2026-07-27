@@ -2,7 +2,14 @@ const crypto = require('crypto');
 
 const SECRET = process.env.SESSION_SECRET || 'jinn-default-secret-change-me';
 const ADMIN_HASH = process.env.ADMIN_PASSWORD_HASH || '6958f2c65a4d20915286ebd1fed07e0a83c1f9a84ea4ba3362cbd1d6bfa50e02';
-const BOT_URL = process.env.BOT_URL || 'http://localhost:5000';
+const BOT_URL = process.env.BOT_URL || '';
+
+function getBotUrl() {
+  if (!BOT_URL) {
+    throw new Error('BOT_URL is not configured. Set BOT_URL in Vercel to your bot server URL.');
+  }
+  return BOT_URL;
+}
 
 function sign(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -25,4 +32,4 @@ function verify(token) {
   } catch { return null; }
 }
 
-module.exports = { sign, verify, ADMIN_HASH, BOT_URL };
+module.exports = { sign, verify, ADMIN_HASH, getBotUrl, BOT_URL };

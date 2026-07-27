@@ -1,4 +1,4 @@
-const { BOT_URL } = require('./_lib');
+const { getBotUrl } = require('./_lib');
 
 const ALLOWED = ['help', 'ping', 'verify', 'activity', 'blacklist', 'whitelist'];
 
@@ -21,6 +21,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const BOT_URL = getBotUrl();
     const resp = await fetch(`${BOT_URL}/api/command`, {
       method: 'POST',
       headers: {

@@ -1,4 +1,4 @@
-const { BOT_URL } = require('./_lib');
+const { getBotUrl } = require('./_lib');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -11,6 +11,7 @@ module.exports = async function handler(req, res) {
   try { data = JSON.parse(body); } catch { return res.status(400).json({ error: 'Invalid JSON' }); }
 
   try {
+    const BOT_URL = getBotUrl();
     const resp = await fetch(`${BOT_URL}/api/whitelist`, {
       method: 'POST',
       headers: {

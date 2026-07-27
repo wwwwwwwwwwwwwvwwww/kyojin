@@ -293,31 +293,11 @@ class WebServer:
             await asyncio.sleep(0.5)
             return web.json_response({"error": "Invalid or expired key"}, status=401)
 
-        approval_id = await self.bot.db.create_login_approval(uid, access_key)
-
-        async def send_approval_dm():
-            try:
-                owner = await self.bot.fetch_user(OWNER_ID)
-                from securitybot.cogs.moderation import LoginApprovalView
-                view = LoginApprovalView(approval_id, uid, access_key)
-                user = self.bot.get_user(uid)
-                name = user.name if user else str(uid)
-                embed = discord.Embed(
-                    title="Web Panel Access",
-                    description=(
-                        f"**{name}** (`{uid}`) is requesting access to the web panel.\n\n"
-                        f"> **ID**: `{uid}`\n"
-                        f"> **Key**: `{access_key}`"
-                    ),
-                    color=0xA8D8EA,
-                )
-                await owner.send(embed=embed, view=view)
-            except Exception:
-                pass
-
-        asyncio.create_task(send_approval_dm())
-
-        return web.json_response({"success": True, "approval_id": approval_id, "status": "pending"})
+        token = create_session(str(uid), f"{uid}")
+        response = web.json_response({"success": True, "message": "Logged in"})
+        secure = request.url and request.url.scheme == "https"
+        response.set_cookie("session", token, path="/", httponly=True, samesite="Strict", max_age=3600, secure=secure)
+        return response
 
     async def handle_api_logout(self, request: web.Request) -> web.Response:
         token = request.cookies.get("session")

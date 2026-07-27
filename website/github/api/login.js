@@ -1,4 +1,4 @@
-const { BOT_URL } = require('./_lib');
+const { getBotUrl } = require('./_lib');
 
 const RATE_LIMITS = {};
 
@@ -26,6 +26,7 @@ module.exports = async function handler(req, res) {
   if (!userId || !key) return res.status(400).json({ error: 'Missing user ID or key' });
 
   try {
+    const BOT_URL = getBotUrl();
     const resp = await fetch(`${BOT_URL}/api/login`, {
       method: 'POST',
       headers: {

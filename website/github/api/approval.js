@@ -1,4 +1,4 @@
-const { BOT_URL } = require('./_lib');
+const { getBotUrl } = require('./_lib');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -7,6 +7,7 @@ module.exports = async function handler(req, res) {
   if (!id) return res.status(400).json({ error: 'Missing approval ID' });
 
   try {
+    const BOT_URL = getBotUrl();
     const resp = await fetch(`${BOT_URL}/api/approval/${encodeURIComponent(id)}`, {
       headers: { 'X-API-Key': process.env.BOT_API_KEY || '' },
     });
