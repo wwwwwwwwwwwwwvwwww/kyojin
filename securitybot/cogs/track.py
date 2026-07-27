@@ -10,9 +10,6 @@ from discord.ext import commands
 BABY_BLUE = 0xA8D8EA
 POLL_INTERVAL = 10  # seconds between batched presence checks
 
-# Only this guild ID is allowed. Bot leaves any other server immediately.
-ALLOWED_GUILD_ID = 1529582624635359402
-
 PRESENCE_OFFLINE  = 0
 PRESENCE_WEBSITE  = 1
 PRESENCE_INGAME   = 2
@@ -395,8 +392,7 @@ class TrackCog(commands.Cog):
         guild_id = interaction.guild.id if interaction.guild else 0
 
         if not is_owner:
-            # Must be legacy whitelist — check against the allowed guild
-            is_legacy = await self.bot.db.is_whitelist_admin(ALLOWED_GUILD_ID, interaction.user.id)
+            is_legacy = await self.bot.db.is_whitelist_admin(guild_id, interaction.user.id) if guild_id else False
             if not is_legacy:
                 await interaction.response.send_message("i dont listen to you", ephemeral=True)
                 return
@@ -404,7 +400,3 @@ class TrackCog(commands.Cog):
         view = TrackView(interaction.user.id, guild_id, self)
         await interaction.response.send_message(view=view)
 
-    @commands.Cog.listener()
-    async def on_guild_join(self, guild: discord.Guild) -> None:
-        if guild.id != ALLOWED_GUILD_ID:
-            await guild.leave()

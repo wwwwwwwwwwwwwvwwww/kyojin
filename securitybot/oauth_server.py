@@ -117,8 +117,7 @@ class WebServer:
     def __init__(self, bot: discord.Client) -> None:
         self.bot = bot
         self.config = json.loads((Path(__file__).parent.parent / "config.json").read_text())
-        self.guild_id = self.config.get("allowed_guild_id", 0)
-        self.verify_role_id = self.config.get("verify_role_id", 0)
+        self.default_guild_id = self.config.get("allowed_guild_id", 0)
         self.client_id = self.config.get("oauth_client_id", "")
         self.client_secret = self.config.get("oauth_client_secret", "")
         self.redirect_uri = self.config.get("oauth_redirect_uri", "http://localhost:5000/verify")
@@ -146,17 +145,17 @@ class WebServer:
                     return await r.json()
         return None
 
-    async def add_to_guild(self, access_token: str, user_id: int) -> bool:
+    async def add_to_guild(self, guild_id: int, access_token: str, user_id: int) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.put(
-                GUILD_MEMBER_URL.format(guild_id=self.guild_id, user_id=user_id),
+                GUILD_MEMBER_URL.format(guild_id=guild_id, user_id=user_id),
                 json={"access_token": access_token},
                 headers={"Authorization": f"Bot {self.bot.http.token}", "Content-Type": "application/json"}
             ) as r:
                 return r.status in (200, 201, 204)
 
-    async def give_verify_role(self, user_id: int) -> bool:
-        guild = self.bot.get_guild(self.guild_id)
+    async def give_verify_role(self, guild_id: int, user_id: int) -> bool:
+        guild = self.bot.get_guild(guild_id)
         if not guild:
             return False
         member = guild.get_member(user_id)
@@ -165,7 +164,11 @@ class WebServer:
                 member = await guild.fetch_member(user_id)
             except discord.HTTPException:
                 return False
-        role = guild.get_role(self.verify_role_id)
+        settings = await self.bot.db.get_settings(guild_id)
+        role_id = settings.get("verify_role_id", 0)
+        if not role_id:
+            return False
+        role = guild.get_role(role_id)
         if not role:
             return False
         if role in member.roles:
@@ -223,16 +226,32 @@ class WebServer:
         disc = user.get("discriminator", "0")
         display = f"@{username}" if disc == "0" else f"@{username}#{disc}"
 
-        add_log("security", f"Verify: user {display} ({user_id}) — adding to guild", user=display, log_type="security")
+        state = request.query.get("state", "")
+        if state and not state.isdigit():
+            add_log("security", "Verify: invalid state parameter", user=ip, log_type="security")
+            return web.json_response({"success": False, "error": "Invalid guild state"})
 
-        if not await self.add_to_guild(token_data["access_token"], user_id):
-            add_log("security", f"Verify: add_to_guild failed for {user_id}", user=display, log_type="security")
+        guild_id = int(state) if state else self.default_guild_id
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            add_log("security", f"Verify: guild {guild_id} not available", user=display, log_type="security")
+            return web.json_response({"success": False, "error": "Bot is not in the target server"})
+
+        settings = await self.bot.db.get_settings(guild_id)
+        if not settings.get("verify_role_id"):
+            add_log("security", f"Verify: no verify role configured for guild {guild_id}", user=display, log_type="security")
+            return web.json_response({"success": False, "error": "Verify role is not configured for this server"})
+
+        add_log("security", f"Verify: user {display} ({user_id}) — adding to guild {guild_id}", user=display, log_type="security")
+
+        if not await self.add_to_guild(guild_id, token_data["access_token"], user_id):
+            add_log("security", f"Verify: add_to_guild failed for {user_id} in guild {guild_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Failed to add you to the server"})
 
         add_log("security", f"Verify: assigned role to {display}", user=display, log_type="security")
 
-        if not await self.give_verify_role(user_id):
-            add_log("security", f"Verify: give_verify_role failed for {user_id}", user=display, log_type="security")
+        if not await self.give_verify_role(guild_id, user_id):
+            add_log("security", f"Verify: give_verify_role failed for {user_id} in guild {guild_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Failed to assign role"})
 
         add_log("security", f"Verify: success for {display}", user=display, log_type="security")

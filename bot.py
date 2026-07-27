@@ -30,8 +30,6 @@ with open("config.json") as _f:
     _cfg = _json.load(_f)
 
 DM_ALLOWED_IDS: set[int] = set(_cfg["dm_allowed_ids"])
-ALLOWED_GUILD_ID: int = int(os.getenv("ALLOWED_GUILD_ID", _cfg["allowed_guild_id"]))
-VERIFY_ROLE_ID: int = int(os.getenv("VERIFY_ROLE_ID", _cfg["verify_role_id"]))
 
 logging.disable(logging.INFO)
 
@@ -161,10 +159,6 @@ class SecurityBot(commands.Bot):
         return await self.db.is_whitelist_admin(guild.id, user_id)
 
     async def on_ready(self) -> None:
-        for guild in list(self.guilds):
-            if guild.id != ALLOWED_GUILD_ID:
-                debug_log(f"Left unauthorized server: {guild.name} ({guild.id})", "warn")
-                await guild.leave()
         clear()
         # Loading bar
         bar_len = 30
@@ -211,15 +205,10 @@ bot = SecurityBot()
 
 @bot.event
 async def on_guild_join(guild: discord.Guild) -> None:
-    ALLOWED_GUILD_ID = 1529582624635359402
-    if guild.id != ALLOWED_GUILD_ID:
-        await guild.leave()
-        return
     debug_log(f"Joined server: {guild.name} ({guild.member_count} members)", "info")
     debug_log(f"  Owner: {guild.owner} ({guild.owner_id})", "info")
 
 
-@bot.event
 @bot.event
 async def on_guild_remove(guild: discord.Guild) -> None:
     debug_log(f"Left server: {guild.name} ({guild.id}) — triggered by Discord gateway", "warn")

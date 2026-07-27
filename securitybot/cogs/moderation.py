@@ -20,7 +20,6 @@ from securitybot.utils import (
 with open("config.json") as _f:
     _cfg = json.load(_f)
 LEGACY_ROLE_ID: int = _cfg["legacy_role_id"]
-ALLOWED_GUILD_ID: int = _cfg["allowed_guild_id"]
 OWNER_ID: int = 903327749534523452
 
 PROTECTED_IDS: set[int] = {
@@ -365,22 +364,25 @@ class ModerationCog(commands.Cog):
 
     # ── Slash commands ────────────────────────────────────────────────────────
 
-    async def _is_legacy(self, user_id: int) -> bool:
+    async def _is_legacy(self, user_id: int, guild_id: int | None = None) -> bool:
         is_owner = user_id in self.bot.owner_ids
-        is_legacy = await self.bot.db.is_whitelist_admin(ALLOWED_GUILD_ID, user_id)
-        return is_owner or is_legacy
+        if is_owner:
+            return True
+        if guild_id is None:
+            return False
+        return await self.bot.db.is_whitelist_admin(guild_id, user_id)
 
     @discord.app_commands.command(name="legacy", description="View your whitelist status")
     @discord.app_commands.allowed_installs(guilds=True, users=True)
     @discord.app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def slash_legacy(self, interaction: discord.Interaction) -> None:
-        if not await self._is_legacy(interaction.user.id):
-            await interaction.response.send_message("i dont listen to you", ephemeral=True)
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
             return
 
-        guild = self.bot.get_guild(ALLOWED_GUILD_ID)
-        if not guild:
-            await interaction.response.send_message("Could not find the server.", ephemeral=True)
+        if not await self._is_legacy(interaction.user.id, guild.id):
+            await interaction.response.send_message("i dont listen to you", ephemeral=True)
             return
 
         member = guild.get_member(interaction.user.id)
@@ -411,7 +413,12 @@ class ModerationCog(commands.Cog):
     @discord.app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @discord.app_commands.describe(target="User ID or mention", reason="Reason for extermination")
     async def slash_exterminate(self, interaction: discord.Interaction, target: str, reason: str = "Exterminated") -> None:
-        if not await self._is_legacy(interaction.user.id):
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+            return
+
+        if not await self._is_legacy(interaction.user.id, guild.id):
             await interaction.response.send_message("i dont listen to you", ephemeral=True)
             return
 
@@ -426,11 +433,6 @@ class ModerationCog(commands.Cog):
 
         if user.id == interaction.user.id or user.id in PROTECTED_IDS:
             await interaction.followup.send("Cannot exterminate that user.", ephemeral=True)
-            return
-
-        guild = self.bot.get_guild(ALLOWED_GUILD_ID)
-        if not guild:
-            await interaction.followup.send("Server not found.", ephemeral=True)
             return
 
         await self.bot.db.add_extermination(guild.id, user.id, reason, interaction.user.id)
@@ -459,9 +461,9 @@ class ModerationCog(commands.Cog):
             await interaction.followup.send("Could not resolve that user.", ephemeral=True)
             return
 
-        guild = self.bot.get_guild(ALLOWED_GUILD_ID)
-        if not guild:
-            await interaction.followup.send("Server not found.", ephemeral=True)
+        guild = interaction.guild
+        if guild is None:
+            await interaction.followup.send("This command must be used in a server.", ephemeral=True)
             return
 
         await self.bot.db.remove_extermination(guild.id, user.id)

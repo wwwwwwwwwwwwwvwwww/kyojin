@@ -427,18 +427,44 @@ class ConfigCog(commands.Cog):
         await ctx.send(embed=self.logging_embed(settings), view=view)
 
     @commands.command(name="verify")
-    async def verify(self, ctx: commands.Context) -> None:
+    async def verify(self, ctx: commands.Context, role_id: str | None = None) -> None:
+        if ctx.guild is None:
+            await ctx.send("This command must be used in a server.")
+            return
+
         from bot import _cfg
         client_id = _cfg.get("oauth_client_id")
         redirect_uri = _cfg.get("oauth_redirect_uri", "http://localhost:5000/verify")
         if not client_id:
             await ctx.send("OAuth not configured.")
             return
+
+        settings = await self.bot.db.get_settings(ctx.guild.id)
+        if role_id:
+            try:
+                role_id_int = int(role_id.strip())
+            except ValueError:
+                await ctx.send("Please provide a valid role ID.")
+                return
+            role = ctx.guild.get_role(role_id_int)
+            if not role:
+                await ctx.send("That role ID is not valid in this server.")
+                return
+            await self.bot.db.update_settings(ctx.guild.id, verify_role_id=role_id_int)
+            settings["verify_role_id"] = role_id_int
+            await ctx.send(f"Verify role configured to {role.mention}.")
+
+        if not settings.get("verify_role_id"):
+            await ctx.send("Set a verify role first by using `,verify <role_id>`.")
+            return
+
         from urllib.parse import quote
         scopes = quote("identify guilds.join")
+        state = quote(str(ctx.guild.id), safe="")
         oauth_url = (
             f"https://discord.com/oauth2/authorize?client_id={client_id}"
             f"&response_type=code&redirect_uri={quote(redirect_uri, safe='')}&scope={scopes}"
+            f"&state={state}"
         )
         embed = discord.Embed(
             title="Verification",
