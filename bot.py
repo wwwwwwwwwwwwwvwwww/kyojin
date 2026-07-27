@@ -162,26 +162,6 @@ class SecurityBot(commands.Bot):
         return await self.db.is_whitelist_admin(guild.id, user_id)
 
     async def on_ready(self) -> None:
-        clear()
-        # Loading bar
-        bar_len = 30
-        print_color("  ◄──── LOADING ────►", "cyan")
-        print()
-        for i in range(bar_len + 1):
-            filled = "█" * i
-            empty = "░" * (bar_len - i)
-            pct = int((i / bar_len) * 100)
-            print(f"\r  {filled}{empty}  {pct}%", end="", flush=True)
-            await asyncio.sleep(0.04)
-        print()
-        print()
-        await asyncio.sleep(0.3)
-        clear()
-        # ASCII art falls down
-        for line in ASCII_ART.splitlines():
-            print_color(line, "lightcyan")
-            await asyncio.sleep(0.03)
-        print()
         print_color("  ◄─────────────── SECURITY BOT - ONLINE ───────────────►", "cyan")
         print_color(f"  ◄  Bot:       {str(self.user):<37}►", "white")
         print_color(f"  ◄  ID:        {str(self.user.id):<37}►", "white")
@@ -189,15 +169,8 @@ class SecurityBot(commands.Bot):
         print_color(f"  ◄  Cogs:      {str(len(self.cogs)):<37}►", "white")
         print_color(f"  ◄  Commands:  {str(len(self.commands)):<37}►", "white")
         print_color("  ◄──────────────────────────────────────────────────────►", "cyan")
-        print()
-        print_color("  ◄──── DEBUG LOG ────►", "yellow")
-        if not DEBUG_LOGS:
-            for g in self.guilds:
-                print_color(f"  ◄  {g.name} ({g.id})  ►", "dim")
-        else:
-            for log in DEBUG_LOGS:
-                print_color(log, "dim")
-        print()
+        for g in self.guilds:
+            print_color(f"  ◄  {g.name} ({g.id})  ►", "dim")
 
         add_log("security", f"Bot started in {len(self.guilds)} server(s)", user=str(self.user), avatar=str(self.user.display_avatar.url) if self.user else None, log_type="security", details={"Servers": ", ".join(f"{g.name} (`{g.id}`)" for g in self.guilds), "Bot ID": str(self.user.id), "Cogs": str(len(self.cogs)), "Commands": str(len(self.commands))})
         add_log("bot_usage", f"Bot online — {len(self.commands)} commands loaded", user=str(self.user), avatar=str(self.user.display_avatar.url) if self.user else None, log_type="command")

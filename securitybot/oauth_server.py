@@ -718,6 +718,9 @@ class WebServer:
             save_dismissed()
         return web.json_response({"success": True})
 
+    async def handle_health(self, request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"})
+
     async def handle_api_logs_dismiss_all(self, request: web.Request) -> web.Response:
         token = request.cookies.get("session")
         session = validate_session(token)
@@ -788,6 +791,7 @@ async def start_web_server(bot: discord.Client) -> None:
         return response
 
     app = web.Application(middlewares=[security_middleware, cors_middleware])
+    app.router.add_get("/health", server.handle_health)
     app.router.add_get("/", server.handle_index)
     app.router.add_get("/index.html", server.handle_index)
     app.router.add_get("/login", server.handle_login_page)
