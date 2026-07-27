@@ -745,9 +745,6 @@ class WebServer:
 
 
 async def start_web_server(bot: discord.Client) -> None:
-    import os
-    import asyncio
-
     load_logs()
     load_dismissed()
 
@@ -819,3 +816,12 @@ async def start_web_server(bot: discord.Client) -> None:
     await site.start()
     bot._web_runner = runner
     bot._web_site = site
+    print(f"[WEB] Listening on 0.0.0.0:{port}")
+    print(f"[WEB] ALLOWED_ORIGINS={allowed_origins}")
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(f"http://127.0.0.1:{port}/health") as r:
+                body = await r.text()
+                print(f"[WEB] Self-test GET /health -> {r.status} {body}")
+    except Exception as e:
+        print(f"[WEB] Self-test FAILED: {e}")

@@ -46,7 +46,7 @@ class LoggingModal(discord.ui.Modal, title="Logging Settings"):
         await self.view.cog.bot.db.update_settings(self.view.ctx.guild.id, logging_events=v.events)
         settings = await self.view.cog.bot.db.get_settings(self.view.ctx.guild.id)
         v.events = settings["logging_events"]
-        v.rebuild()
+        await v.rebuild()
         await interaction.response.edit_message(embed=self.view.cog.logging_embed(settings), view=v)
 
 
@@ -105,7 +105,7 @@ class BlacklistModal(discord.ui.Modal, title="Blacklist Management"):
                 pass
         bl = await v.cog.bot.db.list_blacklist(v.ctx.guild.id)
         v.blacklist = bl
-        v.rebuild()
+        await v.rebuild()
         await interaction.response.edit_message(view=v)
 
 
@@ -146,7 +146,7 @@ class WhitelistModal(discord.ui.Modal, title="Whitelist Management"):
         entries = await v.cog.bot.db.list_whitelist(v.ctx.guild.id)
         v.users = [e for e in entries if not e["admin"]]
         v.admins = [e for e in entries if e["admin"]]
-        v.rebuild()
+        await v.rebuild()
         await interaction.response.edit_message(view=v)
 
 
@@ -159,17 +159,30 @@ class WhitelistView(discord.ui.LayoutView):
         self.admins = admins
         self.blacklist = blacklist or []
         self.page = page
-        self.rebuild()
 
-    def build_text(self) -> str:
+    async def resolve_name(self, uid: int) -> str:
+        user = self.cog.bot.get_user(uid)
+        if user:
+            return user.name
+        guild = self.ctx.guild
+        if guild:
+            member = guild.get_member(uid)
+            if member:
+                return member.name
+        try:
+            user = await self.cog.bot.fetch_user(uid)
+            return user.name
+        except Exception:
+            return str(uid)
+
+    async def build_text(self) -> str:
         if self.page == 0:
             title = "**Standard**"
             entries = self.users
             lines = []
             for e in entries:
                 uid = e['user_id']
-                user = self.cog.bot.get_user(uid)
-                name = str(user) if user else str(uid)
+                name = await self.resolve_name(uid)
                 lines.append(f"▶ `<{uid}>` — **{name}**")
             desc = "\n".join(lines) if lines else "> No entries."
             return f"{title}\n{desc}"
@@ -179,8 +192,7 @@ class WhitelistView(discord.ui.LayoutView):
             lines = []
             for e in entries:
                 uid = e['user_id']
-                user = self.cog.bot.get_user(uid)
-                name = str(user) if user else str(uid)
+                name = await self.resolve_name(uid)
                 lines.append(f"▶ `<{uid}>` — **{name}**")
             desc = "\n".join(lines) if lines else "> No entries."
             return f"{title}\n{desc}"
@@ -188,17 +200,16 @@ class WhitelistView(discord.ui.LayoutView):
             title = "**Blacklist**"
             lines = []
             for uid in self.blacklist:
-                user = self.cog.bot.get_user(uid)
-                name = str(user) if user else str(uid)
+                name = await self.resolve_name(uid)
                 lines.append(f"▶ `<{uid}>` — **{name}**")
             desc = "\n".join(lines) if lines else "> No entries."
             return f"{title}\n{desc}"
 
-    def rebuild(self):
+    async def rebuild(self):
         self.clear_items()
         total_pages = 3
         container = discord.ui.Container(accent_color=0xA8D8EA)
-        container.add_item(discord.ui.TextDisplay(self.build_text()))
+        container.add_item(discord.ui.TextDisplay(await self.build_text()))
 
         inner_row = discord.ui.ActionRow()
         manage_btn = discord.ui.Button(label="m", style=discord.ButtonStyle.primary)
@@ -268,7 +279,7 @@ class WhitelistView(discord.ui.LayoutView):
         prev_btn = discord.ui.Button(emoji=LEFT_ARROW, style=discord.ButtonStyle.secondary)
         async def on_prev(i):
             self.page = (self.page - 1) % total_pages
-            self.rebuild()
+            await self.rebuild()
             await i.response.edit_message(view=self)
         prev_btn.callback = on_prev
 
@@ -278,7 +289,7 @@ class WhitelistView(discord.ui.LayoutView):
         next_btn = discord.ui.Button(emoji=RIGHT_ARROW, style=discord.ButtonStyle.secondary)
         async def on_next(i):
             self.page = (self.page + 1) % total_pages
-            self.rebuild()
+            await self.rebuild()
             await i.response.edit_message(view=self)
         next_btn.callback = on_next
 
@@ -328,11 +339,13 @@ class ChannelMessageView(discord.ui.View):
 
 
 class VerifyView(discord.ui.View):
-    def __init__(self, oauth_url: str | None) -> None:
+    def __init__(self, bot: commands.Bot, guild_id: int) -> None:
         super().__init__(timeout=None)
-        if oauth_url:
-            verify_btn = discord.ui.Button(label="Verify", style=discord.ButtonStyle.success, url=oauth_url, row=0)
-            self.add_item(verify_btn)
+        self.bot = bot
+        self.guild_id = guild_id
+        verify_btn = discord.ui.Button(label="Verify", style=discord.ButtonStyle.primary, custom_id="verify_btn", row=0)
+        verify_btn.callback = self.on_verify
+        self.add_item(verify_btn)
         info_btn = discord.ui.Button(label="Info", style=discord.ButtonStyle.secondary, row=0, custom_id="verify_info")
         async def on_info(interaction):
             embed = discord.Embed(
@@ -343,6 +356,33 @@ class VerifyView(discord.ui.View):
             await interaction.response.send_message(embed=embed, ephemeral=True)
         info_btn.callback = on_info
         self.add_item(info_btn)
+
+    async def on_verify(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        if not guild:
+            await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
+            return
+        settings = await self.bot.db.get_settings(self.guild_id)
+        verify_role_id = settings.get("verify_role_id")
+        if not verify_role_id:
+            await interaction.response.send_message("No verify role is configured.", ephemeral=True)
+            return
+        role = guild.get_role(verify_role_id)
+        if not role:
+            await interaction.response.send_message("The verify role no longer exists.", ephemeral=True)
+            return
+        member = guild.get_member(interaction.user.id)
+        if not member:
+            await interaction.response.send_message("Could not find you in this server.", ephemeral=True)
+            return
+        if role in member.roles:
+            await interaction.response.send_message("You are already verified.", ephemeral=True)
+            return
+        try:
+            await member.add_roles(role, reason="Verified via button")
+            await interaction.response.send_message(f"You have been given the {role.mention} role.", ephemeral=True)
+        except discord.HTTPException:
+            await interaction.response.send_message("Failed to assign the role.", ephemeral=True)
 
 
 class ConfigCog(commands.Cog):
@@ -368,6 +408,7 @@ class ConfigCog(commands.Cog):
         admins = [e for e in entries if e["admin"]]
         bl = await self.bot.db.list_blacklist(ctx.guild.id)
         view = WhitelistView(self, ctx, users, admins, page=0, blacklist=bl)
+        await view.rebuild()
         await ctx.send(view=view)
 
     @whitelist.command(name="list")
@@ -377,6 +418,7 @@ class ConfigCog(commands.Cog):
         admins = [e for e in entries if e["admin"]]
         bl = await self.bot.db.list_blacklist(ctx.guild.id)
         view = WhitelistView(self, ctx, users, admins, page=0, blacklist=bl)
+        await view.rebuild()
         await ctx.send(view=view)
 
     def channel_message_embed(self, settings: dict, kind: str) -> discord.Embed:
@@ -432,13 +474,6 @@ class ConfigCog(commands.Cog):
             await ctx.send("This command must be used in a server.")
             return
 
-        from bot import _cfg
-        client_id = _cfg.get("oauth_client_id")
-        redirect_uri = _cfg.get("oauth_redirect_uri", "http://localhost:5000/verify")
-        if not client_id:
-            await ctx.send("OAuth not configured.")
-            return
-
         settings = await self.bot.db.get_settings(ctx.guild.id)
         if role_id:
             try:
@@ -454,22 +489,31 @@ class ConfigCog(commands.Cog):
             settings["verify_role_id"] = role_id_int
             await ctx.send(f"Verify role configured to {role.mention}.")
 
-        verify_role_id = settings.get("verify_role_id") or _cfg.get("verify_role_id")
+        verify_role_id = settings.get("verify_role_id")
+        if not verify_role_id:
+            from bot import _cfg
+            verify_role_id = _cfg.get("verify_role_id")
         if not verify_role_id:
             await ctx.send("Set a verify role first by using `,verify <role_id>`.")
             return
 
-        from urllib.parse import quote
-        scopes = quote("identify guilds.join")
-        state = quote(str(ctx.guild.id), safe="")
-        oauth_url = (
-            f"https://discord.com/oauth2/authorize?client_id={client_id}"
-            f"&response_type=code&redirect_uri={quote(redirect_uri, safe='')}&scope={scopes}"
-            f"&state={state}"
-        )
         embed = discord.Embed(
             title="Verification",
             description="Click the button below to verify",
             color=0xA8D8EA,
         )
-        await ctx.send(embed=embed, view=VerifyView(oauth_url))
+        await ctx.send(embed=embed, view=VerifyView(self.bot, ctx.guild.id))
+
+    @commands.command(name="accessrole")
+    async def accessrole(self, ctx: commands.Context, role: discord.Role = None) -> None:
+        if not role:
+            await ctx.send("Usage: `,accessrole @role`")
+            return
+        antinuke = await self.bot.db.get_raw_json(ctx.guild.id, "antinuke")
+        mb = antinuke.setdefault("massban_lockdown", {})
+        mb["access_role_id"] = role.id
+        await self.bot.db.set_raw_json(ctx.guild.id, "antinuke", antinuke)
+        events_cog = self.bot.get_cog("EventCog")
+        if events_cog:
+            events_cog._locked_positions[ctx.guild.id] = role.position
+        await ctx.send(f"Access role set to {role.mention}. It will be locked in position and cannot be moved.")

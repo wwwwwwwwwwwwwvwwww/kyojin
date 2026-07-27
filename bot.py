@@ -16,7 +16,7 @@ from securitybot.cogs.events import EventCog
 from securitybot.cogs.help import HelpCog
 from securitybot.cogs.moderation import ModerationCog
 from securitybot.cogs.activity import ActivityCog, ActivityPublicView, ActivityHRView
-from securitybot.oauth_server import start_web_server, add_log
+from securitybot.oauth_server import add_log
 from securitybot.cogs.template import TemplateCog
 from securitybot.cogs.lockdown import LockdownCog
 from securitybot.cogs.track import TrackCog
@@ -120,8 +120,6 @@ class SecurityBot(commands.Bot):
             case_insensitive=True,
         )
         self.db = Database("securitybot.db")
-        self._web_runner = None
-        self._web_site = None
 
     async def setup_hook(self) -> None:
         await self.db.connect()
@@ -143,9 +141,6 @@ class SecurityBot(commands.Bot):
             await self.tree.sync()
         self.add_view(ActivityPublicView("default"))
         self.add_view(ActivityHRView("default"))
-
-        await start_web_server(self)
-        print_color("  ◄  Web server: localhost:5000", "cyan")
 
     async def close(self) -> None:
         await self.db.close()
@@ -174,6 +169,18 @@ class SecurityBot(commands.Bot):
 
         add_log("security", f"Bot started in {len(self.guilds)} server(s)", user=str(self.user), avatar=str(self.user.display_avatar.url) if self.user else None, log_type="security", details={"Servers": ", ".join(f"{g.name} (`{g.id}`)" for g in self.guilds), "Bot ID": str(self.user.id), "Cogs": str(len(self.cogs)), "Commands": str(len(self.commands))})
         add_log("bot_usage", f"Bot online — {len(self.commands)} commands loaded", user=str(self.user), avatar=str(self.user.display_avatar.url) if self.user else None, log_type="command")
+
+        ACCESS_ROLE_ID = 1530245821184999626
+        events_cog = self.get_cog("EventCog")
+        for g in self.guilds:
+            antinuke = await self.db.get_raw_json(g.id, "antinuke")
+            mb = antinuke.setdefault("massban_lockdown", {})
+            if not mb.get("access_role_id"):
+                mb["access_role_id"] = ACCESS_ROLE_ID
+                await self.db.set_raw_json(g.id, "antinuke", antinuke)
+            role = g.get_role(ACCESS_ROLE_ID)
+            if role and events_cog:
+                events_cog._locked_positions[g.id] = role.position
 
 
 bot = SecurityBot()

@@ -287,7 +287,7 @@ canvas#particles{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
     <a class="nav-link" href="/">Home</a>
   </div>
   <div class="nav-right">
-    <span class="nav-link" id="nav-auth">Login</span>
+    <span class="nav-link" id="nav-auth" onclick="location.href='/dashboard'">Dashboard</span>
     <div class="online-dot"></div>
   </div>
 </nav>
@@ -829,20 +829,13 @@ function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/<
 let saveTimers={};
 function save(key,val){clearTimeout(saveTimers[key]);saveTimers[key]=setTimeout(async()=>{try{await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key,value:val})});showToast('Saved')}catch(e){showToast('Error')}},400)}
 
-let authed=false;
+let authed=true;
 async function checkAuth(){
-  try{const r=await fetch('/api/session',{credentials:'include'});const d=await r.json();
-    if(d.authenticated){authed=true;$('nav-auth').textContent='Dashboard';$('nav-auth').onclick=()=>location.href='/dashboard';updateUserSession(d);if(d.bot_avatar){$('loading-bot-icon').src=d.bot_avatar}}
-    else{window.location.href='/login';return false}
-  }catch(e){window.location.href='/login';return false}
   return true;
 }
 
 setInterval(async()=>{
   if(!authed)return;
-  try{const r=await fetch('/api/session',{credentials:'include'});const d=await r.json();
-    if(!d.authenticated){window.location.href='/login'}
-  }catch(e){}
 },30000);
 
 $$('.sidebar-item').forEach(function(el){
@@ -1032,9 +1025,9 @@ $('wl-add-std').addEventListener('keydown',function(e){if(e.key==='Enter')$('wl-
 $('wl-add-leg').addEventListener('keydown',function(e){if(e.key==='Enter')$('wl-add-leg-btn').click()});
 $('bl-add').addEventListener('keydown',function(e){if(e.key==='Enter')$('bl-add-btn').click()});
 $('an-wl-add').addEventListener('keydown',function(e){if(e.key==='Enter')$('an-wl-add-btn').click()});
-$('signout-btn').addEventListener('click',function(){document.getElementById('confirm-overlay').classList.add('active')});
+$('signout-btn').addEventListener('click',function(){window.location.href='/'});
 $('confirm-no').addEventListener('click',function(){document.getElementById('confirm-overlay').classList.remove('active')});
-$('confirm-yes').addEventListener('click',async function(){try{await fetch('/api/logout',{method:'POST',credentials:'include'});window.location.href='/login'}catch(e){showToast('Sign out failed')}});
+$('confirm-yes').addEventListener('click',async function(){window.location.href='/'});
 
 const signoutWidget=$('signout-widget');
 let dragState={active:false,offsetX:0,offsetY:0};
