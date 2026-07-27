@@ -245,12 +245,6 @@
       </div>
       <button class="login-btn" type="submit">Login</button>
     </form>
-    <div id="approval-popup" style="display:none;text-align:center;padding:20px 0">
-      <div class="loading-icon" style="margin:0 auto 16px"></div>
-      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:8px;letter-spacing:1px">Waiting for approval</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.5px">The bot owner has been notified.<br>Please wait for them to approve your access.</div>
-      <div id="approval-status" style="font-size:10px;color:rgba(168,216,234,.4);margin-top:16px;letter-spacing:1px;text-transform:uppercase"></div>
-    </div>
   </div>
 </div>
 <script>
@@ -292,8 +286,6 @@ fetch('/api/session', { credentials: 'include' }).then(r => r.json()).then(data 
   if (data.authenticated) window.location.href = '/dashboard';
 });
 
-let pollTimer = null;
-
 async function login(e) {
   e.preventDefault();
   const uid = document.getElementById('user_id').value;
@@ -318,10 +310,6 @@ async function login(e) {
     document.getElementById('error').textContent = 'Could not connect to server';
     document.getElementById('error').style.display = 'block';
   }
-}
-
-function pollApproval(id) {
-  return; // approval flow disabled
 }
 
 const canvas = document.getElementById('net');

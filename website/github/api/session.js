@@ -8,7 +8,6 @@ module.exports = async function handler(req, res) {
     const resp = await fetch(`${BOT_URL}/api/session`, {
       headers: {
         'Cookie': cookies,
-        'X-API-Key': process.env.BOT_API_KEY || '',
       },
     });
     const result = await resp.json();

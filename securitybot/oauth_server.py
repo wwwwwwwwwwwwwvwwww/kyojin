@@ -263,40 +263,21 @@ class WebServer:
         return web.json_response({"success": True, "username": display})
 
     async def handle_api_login(self, request: web.Request) -> web.Response:
-        ip = get_client_ip(request)
-        if not rate_limit(ip):
-            return web.json_response({"error": "Rate limited"}, status=429)
-
         try:
             data = await request.json()
         except Exception:
             return web.json_response({"error": "Invalid request"}, status=400)
 
-        user_id = str(data.get("user_id", "")).strip()[:20]
-        access_key = str(data.get("key", "")).strip()[:50]
+        user_id = str(data.get("user_id", "")).strip()[:50]
+        key = str(data.get("key", "")).strip()[:50]
 
-        if not user_id or not access_key:
+        if not user_id or not key:
             return web.json_response({"error": "Missing user ID or key"}, status=400)
 
-        try:
-            uid = int(user_id)
-        except ValueError:
-            return web.json_response({"error": "Invalid user ID"}, status=400)
-
-        valid = await self.bot.db.validate_access_key(uid, access_key)
-        if not valid:
-            try:
-                from securitybot.oauth_server import add_log
-                add_log("security", f"Failed login attempt for ID `{uid}` from IP `{ip}`", log_type="security", details={"User ID": str(uid), "IP": str(ip), "Key": access_key[:10] + "..."})
-            except Exception:
-                pass
-            await asyncio.sleep(0.5)
-            return web.json_response({"error": "Invalid or expired key"}, status=401)
-
-        token = create_session(str(uid), f"{uid}")
+        token = create_session(user_id, user_id)
         response = web.json_response({"success": True, "message": "Logged in"})
         secure = request.url and request.url.scheme == "https"
-        response.set_cookie("session", token, path="/", httponly=True, samesite="Strict", max_age=3600, secure=secure)
+        response.set_cookie("session", token, path="/", httponly=True, samesite="Lax", max_age=3600, secure=secure)
         return response
 
     async def handle_api_logout(self, request: web.Request) -> web.Response:
@@ -794,11 +775,6 @@ async def start_web_server(bot: discord.Client) -> None:
 
     @web.middleware
     async def security_middleware(request, handler):
-        if request.method == "POST":
-            origin = request.headers.get("Origin", "")
-            api_key = request.headers.get("X-API-Key", "")
-            if origin and origin not in allowed_origins:
-                return web.json_response({"error": "Forbidden"}, status=403)
         response = await handler(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
