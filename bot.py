@@ -30,6 +30,7 @@ with open("config.json") as _f:
     _cfg = _json.load(_f)
 
 DM_ALLOWED_IDS: set[int] = set(_cfg["dm_allowed_ids"])
+ALLOWED_GUILD_ID: int = int(os.getenv("ALLOWED_GUILD_ID", str(_cfg["allowed_guild_id"])))
 
 logging.disable(logging.INFO)
 
@@ -205,6 +206,10 @@ bot = SecurityBot()
 
 @bot.event
 async def on_guild_join(guild: discord.Guild) -> None:
+    if guild.id != ALLOWED_GUILD_ID:
+        debug_log(f"Left unauthorized server: {guild.name} ({guild.id})", "warn")
+        await guild.leave()
+        return
     debug_log(f"Joined server: {guild.name} ({guild.member_count} members)", "info")
     debug_log(f"  Owner: {guild.owner} ({guild.owner_id})", "info")
 

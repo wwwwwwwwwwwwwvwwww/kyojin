@@ -120,7 +120,7 @@ class WebServer:
         self.default_guild_id = self.config.get("allowed_guild_id", 0)
         self.client_id = self.config.get("oauth_client_id", "")
         self.client_secret = self.config.get("oauth_client_secret", "")
-        self.redirect_uri = self.config.get("oauth_redirect_uri", "http://localhost:5000/verify")
+        self.redirect_uri = os.environ.get("OAUTH_REDIRECT_URI", self.config.get("oauth_redirect_uri", "http://localhost:5000/verify"))
 
     async def exchange_code(self, code: str) -> dict | None:
         data = {
@@ -751,6 +751,7 @@ async def start_web_server(bot: discord.Client) -> None:
     server = WebServer(bot)
     port = int(os.environ.get("PORT", 5000))
     vercel_url = os.environ.get("VERCEL_URL", "")
+    railway_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
     allowed_origins = [
         "http://localhost:5000",
         "http://localhost:3000",
@@ -758,6 +759,9 @@ async def start_web_server(bot: discord.Client) -> None:
     if vercel_url:
         allowed_origins.append(f"https://{vercel_url}")
         allowed_origins.append(f"http://{vercel_url}")
+    if railway_url:
+        allowed_origins.append(f"https://{railway_url}")
+        allowed_origins.append(f"http://{railway_url}")
 
     @web.middleware
     async def cors_middleware(request, handler):
