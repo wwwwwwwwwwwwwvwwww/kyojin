@@ -16,7 +16,7 @@ class EventCog(commands.Cog):
             async for entry in guild.audit_logs(limit=5, action=action):
                 if target_id is None or getattr(entry.target, "id", None) == target_id:
                     return entry.user
-        except discord.Forbidden:
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
             return None
         return None
 

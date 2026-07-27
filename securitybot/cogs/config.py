@@ -454,7 +454,8 @@ class ConfigCog(commands.Cog):
             settings["verify_role_id"] = role_id_int
             await ctx.send(f"Verify role configured to {role.mention}.")
 
-        if not settings.get("verify_role_id"):
+        verify_role_id = settings.get("verify_role_id") or _cfg.get("verify_role_id")
+        if not verify_role_id:
             await ctx.send("Set a verify role first by using `,verify <role_id>`.")
             return
 

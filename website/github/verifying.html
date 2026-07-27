@@ -56,16 +56,18 @@
 <script>
 const params = new URLSearchParams(window.location.search);
 const code = params.get('code');
+const state = params.get('state');
 
 if (!code) {
   showError('No authorization code found.');
 } else {
-  doVerify(code);
+  doVerify(code, state);
 }
 
-async function doVerify(code) {
+async function doVerify(code, state) {
   try {
-    const res = await fetch('/api/verify?code=' + encodeURIComponent(code));
+    const url = '/api/verify?code=' + encodeURIComponent(code) + (state ? '&state=' + encodeURIComponent(state) : '');
+    const res = await fetch(url);
     const data = await res.json();
     if (data.success) {
       showSuccess(data.username || 'You');

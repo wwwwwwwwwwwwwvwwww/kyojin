@@ -165,7 +165,7 @@ class WebServer:
             except discord.HTTPException:
                 return False
         settings = await self.bot.db.get_settings(guild_id)
-        role_id = settings.get("verify_role_id", 0)
+        role_id = settings.get("verify_role_id") or self.config.get("verify_role_id")
         if not role_id:
             return False
         role = guild.get_role(role_id)
@@ -176,7 +176,8 @@ class WebServer:
         try:
             await member.add_roles(role, reason="Verified via OAuth")
             return True
-        except discord.HTTPException:
+        except discord.HTTPException as exc:
+            add_log("security", f"Verify: failed to add verify role {role_id} to user {user_id} in guild {guild_id} — {exc}", user=str(user_id), log_type="security")
             return False
 
     async def handle_index(self, request: web.Request) -> web.Response:
@@ -184,6 +185,9 @@ class WebServer:
 
     async def handle_login_page(self, request: web.Request) -> web.Response:
         return web.FileResponse(WEBSITE_DIR / "login.html")
+
+    async def handle_verify_page(self, request: web.Request) -> web.Response:
+        return web.FileResponse(WEBSITE_DIR / "verifying.html")
 
     async def handle_dashboard_page(self, request: web.Request) -> web.Response:
         return web.FileResponse(WEBSITE_DIR / "dashboard.html")
@@ -227,6 +231,7 @@ class WebServer:
         display = f"@{username}" if disc == "0" else f"@{username}#{disc}"
 
         state = request.query.get("state", "")
+        add_log("security", f"Verify: received state={state}", user=ip, log_type="security")
         if state and not state.isdigit():
             add_log("security", "Verify: invalid state parameter", user=ip, log_type="security")
             return web.json_response({"success": False, "error": "Invalid guild state"})
@@ -238,7 +243,8 @@ class WebServer:
             return web.json_response({"success": False, "error": "Bot is not in the target server"})
 
         settings = await self.bot.db.get_settings(guild_id)
-        if not settings.get("verify_role_id"):
+        role_id = settings.get("verify_role_id") or self.config.get("verify_role_id")
+        if not role_id:
             add_log("security", f"Verify: no verify role configured for guild {guild_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Verify role is not configured for this server"})
 
@@ -248,9 +254,11 @@ class WebServer:
             add_log("security", f"Verify: add_to_guild failed for {user_id} in guild {guild_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Failed to add you to the server"})
 
-        add_log("security", f"Verify: assigned role to {display}", user=display, log_type="security")
-
         if not await self.give_verify_role(guild_id, user_id):
+            add_log("security", f"Verify: give_verify_role failed for {user_id} in guild {guild_id}", user=display, log_type="security")
+            return web.json_response({"success": False, "error": "Failed to assign role"})
+
+        add_log("security", f"Verify: assigned role to {display}", user=display, log_type="security")
             add_log("security", f"Verify: give_verify_role failed for {user_id} in guild {guild_id}", user=display, log_type="security")
             return web.json_response({"success": False, "error": "Failed to assign role"})
 
@@ -829,7 +837,7 @@ async def start_web_server(bot: discord.Client) -> None:
     app.router.add_get("/login.html", server.handle_login_page)
     app.router.add_get("/dashboard", server.handle_dashboard_page)
     app.router.add_get("/dashboard.html", server.handle_dashboard_page)
-    app.router.add_get("/verify", server.handle_index)
+    app.router.add_get("/verify", server.handle_verify_page)
     app.router.add_get("/api/verify", server.handle_api_verify)
     app.router.add_post("/api/login", server.handle_api_login)
     app.router.add_post("/api/logout", server.handle_api_logout)
