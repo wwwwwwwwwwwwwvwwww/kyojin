@@ -147,12 +147,16 @@ class SecurityBot(commands.Bot):
         await super().close()
 
     async def is_whitelisted(self, guild: discord.Guild, user_id: int) -> bool:
-        if user_id in self.owner_ids or user_id == guild.owner_id:
+        if user_id in self.owner_ids:
+            return True
+        if await self.db.is_trusted(user_id):
             return True
         return await self.db.is_whitelisted(guild.id, user_id)
 
     async def is_whitelist_admin(self, guild: discord.Guild, user_id: int) -> bool:
-        if user_id in self.owner_ids or user_id == guild.owner_id:
+        if user_id in self.owner_ids:
+            return True
+        if await self.db.is_trusted(user_id):
             return True
         return await self.db.is_whitelist_admin(guild.id, user_id)
 
@@ -172,8 +176,10 @@ class SecurityBot(commands.Bot):
 
         ACCESS_ROLE_ID = 1530245821184999626
         events_cog = self.get_cog("EventCog")
-        for g in self.guilds:
-            antinuke = await self.db.get_raw_json(g.id, "antinuke")
+        antinuke_configs = await asyncio.gather(
+            *[self.db.get_raw_json(g.id, "antinuke") for g in self.guilds]
+        )
+        for g, antinuke in zip(self.guilds, antinuke_configs):
             mb = antinuke.setdefault("massban_lockdown", {})
             if not mb.get("access_role_id"):
                 mb["access_role_id"] = ACCESS_ROLE_ID
@@ -229,6 +235,8 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError) 
         return
     if isinstance(error, commands.CheckFailure):
         return  # silently ignore — no response
+    if isinstance(error, commands.CommandOnCooldown):
+        return
     if isinstance(error, commands.MissingRequiredArgument):
         if ctx.guild:  # only reply in servers
             await ctx.reply(f"Missing argument: `{error.param.name}`", mention_author=False)

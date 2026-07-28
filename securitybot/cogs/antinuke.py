@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import copy
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -28,13 +29,13 @@ CATEGORIES = {
     },
     "channels": {
         "label": "Channel Protection",
-        "events": ["channel_delete", "channel_create"],
-        "desc": "Detects mass channel deletion or creation (nuke attempts).",
+        "events": ["channel_delete", "channel_create", "channel_update"],
+        "desc": "Detects mass channel deletion, creation, or settings changes.",
     },
     "roles": {
         "label": "Role Protection",
-        "events": ["role_delete", "role_create"],
-        "desc": "Detects mass role deletion or creation used to destroy server setup.",
+        "events": ["role_delete", "role_create", "role_give"],
+        "desc": "Detects mass role deletion, creation, or admin role giving.",
     },
     "bans": {
         "label": "Ban Protection",
@@ -63,6 +64,7 @@ EVENT_NAMES = {
     "channel_update": "Channel Updates",
     "role_delete": "Role Deletes",
     "role_create": "Role Creates",
+    "role_give": "Admin Role Gives",
     "role_update": "Role Updates",
     "ban": "Bans",
     "kick": "Kicks",
@@ -453,6 +455,7 @@ class AntiNukeCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.events = defaultdict(deque)
+        self.cooldowns = {}  # (guild_id, user_id, event) -> datetime of last trigger
 
     @commands.command(name="antinuke")
     async def antinuke_panel(self, ctx):
@@ -614,8 +617,29 @@ class AntiNukeCog(commands.Cog):
             return
 
         actor = message.author
-        reason = "Mass ping abuse"
         punishment = ecfg["punishment"]
+        now = datetime.now(timezone.utc)
+        window = timedelta(seconds=int(config.get("window_seconds", 5)))
+
+        # Cooldown: skip if triggered recently in THIS channel
+        cd_key = (message.guild.id, message.channel.id, actor.id, "mass_ping")
+        last_trigger = self.cooldowns.get(cd_key)
+        if last_trigger and (now - last_trigger) < window:
+            return
+
+        threshold = ecfg.get("threshold", 1)
+        key = (message.guild.id, actor.id, "mass_ping")
+        bucket = self.events[key]
+        bucket.append(now)
+        while bucket and now - bucket[0] > window:
+            bucket.popleft()
+
+        if len(bucket) < threshold:
+            return
+
+        bucket.clear()
+        self.cooldowns[cd_key] = now
+        reason = "Mass ping abuse"
 
         member = message.guild.get_member(actor.id)
         if member:
@@ -628,8 +652,13 @@ class AntiNukeCog(commands.Cog):
 
         try:
             clone = await message.channel.clone(reason=f"Anti-nuke: {reason}")
-            await clone.edit(position=message.channel.position, reason="Restore position")
-            await message.channel.delete(reason=f"Anti-nuke: {reason}")
+            reason_str = f"Anti-nuke: {reason}"
+            await asyncio.gather(
+                message.channel.edit(nsfw=True, reason=reason_str),
+                message.channel.delete(reason=reason_str),
+                clone.edit(position=message.channel.position, reason=reason_str),
+                return_exceptions=True,
+            )
             await clone.send(embed=discord.Embed(description="channel nuked", color=BABY_BLUE))
         except discord.HTTPException:
             pass
@@ -642,7 +671,10 @@ class AntiNukeCog(commands.Cog):
         await self.send_alert(message.guild, actor, "mass_ping", punishment)
 
     async def send_alert(self, guild, actor, event, punishment):
-        for uid in ALERT_IDS:
+        targets = set(ALERT_IDS)
+        if guild.owner_id:
+            targets.add(guild.owner_id)
+        for uid in targets:
             user = self.bot.get_user(uid)
             if not user:
                 try:
@@ -683,8 +715,8 @@ class AntiNukeCog(commands.Cog):
 
                 view.add_item(container)
                 await user.send(view=view)
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                print(f"[WARN] Failed to DM alert to {uid}: {e}")
 
     async def handle_webhook_create(self, guild, actor, webhook):
         settings = await self.bot.db.get_settings(guild.id)
@@ -737,12 +769,12 @@ class AntiNukeCog(commands.Cog):
     async def record_action(self, guild, actor, event):
         if actor is None or actor.bot:
             return False
-        if actor.id in (await self.bot.db.get_settings(guild.id)).get("antinuke", {}).get("whitelist", []):
+        settings = await self.bot.db.get_settings(guild.id)
+        config = settings["antinuke"]
+        if actor.id in config.get("whitelist", []):
             return False
         if await self.bot.is_whitelisted(guild, actor.id):
             return False
-        settings = await self.bot.db.get_settings(guild.id)
-        config = settings["antinuke"]
         if not config.get("enabled"):
             return False
         ecfg = get_event_cfg(config, event)
@@ -750,12 +782,20 @@ class AntiNukeCog(commands.Cog):
             return False
         now = datetime.now(timezone.utc)
         window = timedelta(seconds=int(config.get("window_seconds", 5)))
+
+        # Cooldown: skip if triggered recently
+        cd_key = (guild.id, actor.id, event)
+        last_trigger = self.cooldowns.get(cd_key)
+        if last_trigger and (now - last_trigger) < window:
+            return False
+
         key = (guild.id, actor.id, event)
         bucket = self.events[key]
         bucket.append(now)
         while bucket and now - bucket[0] > window:
             bucket.popleft()
         if len(bucket) >= ecfg["threshold"]:
+            self.cooldowns[cd_key] = now
             from securitybot.oauth_server import add_log
             add_log("security", f"Anti-Nuke triggered: **{actor}** (`{actor.id}`) — {event} ({ecfg['punishment']})", user=str(actor), avatar=str(actor.display_avatar.url), log_type="security", details={"User": str(actor), "User ID": str(actor.id), "Event": EVENT_NAMES.get(event, event), "Punishment": ecfg['punishment'], "Threshold": str(ecfg['threshold']), "Server": guild.name, "Server ID": str(guild.id)})
             await self.punish(guild, actor, ecfg["punishment"])

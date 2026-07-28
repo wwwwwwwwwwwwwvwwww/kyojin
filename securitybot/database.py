@@ -154,6 +154,12 @@ class Database:
                 session_token TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS trusted_users (
+                user_id INTEGER PRIMARY KEY,
+                added_by INTEGER NOT NULL,
+                added_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
             """
         )
         try:
@@ -221,7 +227,7 @@ class Database:
         except Exception:
             pass
 
-    async def ensure_guild(self, guild_id: int) -> None:
+    async def ensure_guild(self, guild_id: int, *, commit: bool = True) -> None:
         await self.db.execute(
             """
             INSERT OR IGNORE INTO guild_settings (guild_id, antinuke, logging_events)
@@ -229,10 +235,11 @@ class Database:
             """,
             (guild_id, self.encode_json(DEFAULT_ANTINUKE), self.encode_json(DEFAULT_LOGGING)),
         )
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
 
     async def get_raw_json(self, guild_id: int, column: str) -> dict[str, Any]:
-        await self.ensure_guild(guild_id)
+        await self.ensure_guild(guild_id, commit=False)
         cursor = await self.db.execute(f"SELECT {column} FROM guild_settings WHERE guild_id=?", (guild_id,))
         row = await cursor.fetchone()
         if not row:
@@ -605,3 +612,25 @@ class Database:
                 (status, approval_id),
             )
         await self.db.commit()
+
+    # ── Trusted Users ────────────────────────────────────────────────────────
+
+    async def add_trusted(self, user_id: int, added_by: int) -> None:
+        await self.db.execute(
+            "INSERT OR IGNORE INTO trusted_users (user_id, added_by) VALUES (?, ?)",
+            (user_id, added_by),
+        )
+        await self.db.commit()
+
+    async def remove_trusted(self, user_id: int) -> None:
+        await self.db.execute("DELETE FROM trusted_users WHERE user_id=?", (user_id,))
+        await self.db.commit()
+
+    async def is_trusted(self, user_id: int) -> bool:
+        cursor = await self.db.execute("SELECT 1 FROM trusted_users WHERE user_id=?", (user_id,))
+        return (await cursor.fetchone()) is not None
+
+    async def list_trusted(self) -> list[dict]:
+        cursor = await self.db.execute("SELECT user_id, added_by, added_at FROM trusted_users ORDER BY added_at")
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

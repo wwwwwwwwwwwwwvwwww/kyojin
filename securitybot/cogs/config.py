@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from urllib.parse import quote
 
 import discord
 from discord.ext import commands
 
-from securitybot.utils import base_embed, log_embed
+from securitybot.utils import base_embed, log_embed, parse_user_id
 
 CHECK = discord.PartialEmoji(name="Check", id=1529617202141987027)
 CROSS = discord.PartialEmoji(name="Cross", id=1529617223755370538)
@@ -388,6 +389,7 @@ class VerifyView(discord.ui.View):
 class ConfigCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.clean_channels: set[int] = set()
 
     async def cog_check(self, ctx: commands.Context) -> bool:
         return True
@@ -517,3 +519,431 @@ class ConfigCog(commands.Cog):
         if events_cog:
             events_cog._locked_positions[ctx.guild.id] = role.position
         await ctx.send(f"Access role set to {role.mention}. It will be locked in position and cannot be moved.")
+
+    @commands.command(name="lockrole")
+    async def lockrole(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        is_legacy = await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id)
+        is_owner = ctx.author.id in self.bot.owner_ids or ctx.author.id == ctx.guild.owner_id
+        if not is_legacy and not is_owner:
+            return
+        antinuke = await self.bot.db.get_raw_json(ctx.guild.id, "antinuke")
+        mb = antinuke.get("massban_lockdown", {})
+        access_role_id = mb.get("access_role_id")
+        if not access_role_id:
+            await ctx.send("No access role is set.")
+            return
+        role = ctx.guild.get_role(access_role_id)
+        if not role:
+            await ctx.send("Access role not found.")
+            return
+        events_cog = self.bot.get_cog("EventCog")
+        if events_cog and ctx.guild.id in events_cog._locked_positions:
+            del events_cog._locked_positions[ctx.guild.id]
+            await ctx.send("Unlocked")
+        else:
+            if events_cog:
+                events_cog._locked_positions[ctx.guild.id] = role.position
+            await ctx.send("Locked")
+
+    @commands.command(name="pic")
+    async def pic(self, ctx: commands.Context, member: discord.Member = None) -> None:
+        await self._give_role(ctx, member, "pic_role_id", "PIC")
+
+    @commands.command(name="vc")
+    async def vc(self, ctx: commands.Context, member: discord.Member = None) -> None:
+        await self._give_role(ctx, member, "vc_role_id", "VC")
+
+    @commands.command(name="vcjoin")
+    async def vcjoin(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.voice is None or ctx.author.voice.channel is None:
+            await ctx.send("You must be in a voice channel.")
+            return
+        channel = ctx.author.voice.channel
+        try:
+            vc = await channel.connect(self_deaf=True)
+            await ctx.send("Affirmative.")
+        except discord.HTTPException:
+            await ctx.send("Failed to join voice channel.")
+
+    @commands.command(name="hr")
+    async def hr(self, ctx: commands.Context, member: discord.Member = None) -> None:
+        await self._give_role(ctx, member, "hr_role_id", "HR")
+
+    async def _give_role(self, ctx: commands.Context, member: discord.Member | None, config_key: str, label: str) -> None:
+        if ctx.guild is None:
+            return
+        if not member:
+            await ctx.send(f"Usage: `,{label.lower()} @user`")
+            return
+        from bot import _cfg
+        role_id = _cfg.get(config_key)
+        if not role_id:
+            await ctx.send(f"No {label} role configured.")
+            return
+        role = ctx.guild.get_role(role_id)
+        if not role:
+            await ctx.send(f"{label} role not found.")
+            return
+        if role in member.roles:
+            try:
+                await member.remove_roles(role, reason=f"Removed by {ctx.author}")
+                await ctx.send(f"Removed {role.mention} from {member.mention}.")
+            except discord.HTTPException:
+                await ctx.send("Failed to remove role.")
+        else:
+            try:
+                await member.add_roles(role, reason=f"Given by {ctx.author}")
+                await ctx.send(f"Given {role.mention} to {member.mention}.")
+            except discord.HTTPException:
+                await ctx.send("Failed to add role.")
+
+    @commands.command(name="hrsync")
+    @commands.has_permissions(administrator=True)
+    async def hrsync(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        from bot import _cfg
+        role_id = _cfg.get("hr_role_id")
+        if not role_id:
+            await ctx.send("No HR role configured.")
+            return
+        hr_role = ctx.guild.get_role(role_id)
+        if not hr_role:
+            await ctx.send("HR role not found.")
+            return
+        count = 0
+        to_give = []
+        for member in ctx.guild.members:
+            if hr_role in member.roles:
+                continue
+            if any(r.permissions.administrator for r in member.roles):
+                to_give.append(member)
+        if to_give:
+            results = await asyncio.gather(
+                *[m.add_roles(hr_role, reason="HR Sync") for m in to_give],
+                return_exceptions=True,
+            )
+            count = sum(1 for r in results if not isinstance(r, Exception))
+        await ctx.send(f"Affirmative.")
+
+    @commands.command(name="clean")
+    async def clean(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.channel.id in self.clean_channels:
+            self.clean_channels.discard(ctx.channel.id)
+            await ctx.send("Cleaning stopped.")
+        else:
+            self.clean_channels.add(ctx.channel.id)
+            await ctx.send("Cleaning")
+
+    @commands.command(name="rrm")
+    async def rrm(self, ctx: commands.Context, role: discord.Role = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not role:
+            await ctx.send("Usage: `,rrm <role>`")
+            return
+        if role.members:
+            await asyncio.gather(
+                *[m.remove_roles(role, reason=f"Mass remove by {ctx.author}") for m in role.members],
+                return_exceptions=True,
+            )
+        await ctx.send("Affirmative.")
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        if message.guild is None:
+            return
+        if message.author.bot:
+            return
+        if message.channel.id not in self.clean_channels:
+            return
+        if message.author.id in self.bot.owner_ids:
+            return
+        if await self.bot.db.is_whitelist_admin(message.guild.id, message.author.id):
+            return
+        try:
+            await message.delete()
+        except discord.HTTPException:
+            pass
+
+    @commands.command(name="avoid")
+    async def avoid(self, ctx: commands.Context, role: discord.Role = None) -> None:
+        if ctx.guild is None:
+            return
+        is_legacy = await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id)
+        is_owner = ctx.author.id in self.bot.owner_ids or ctx.author.id == ctx.guild.owner_id
+        if not is_legacy and not is_owner:
+            return
+        if not role:
+            await ctx.send("Usage: `,avoid @role` to add/remove a role from the avoided list.")
+            return
+        antinuke = await self.bot.db.get_raw_json(ctx.guild.id, "antinuke")
+        avoided = antinuke.setdefault("avoided_roles", [])
+        if role.id in avoided:
+            avoided.remove(role.id)
+            await self.bot.db.set_raw_json(ctx.guild.id, "antinuke", antinuke)
+            await ctx.send(f"Removed from list.")
+        else:
+            avoided.append(role.id)
+            await self.bot.db.set_raw_json(ctx.guild.id, "antinuke", antinuke)
+            await ctx.send(f"Added to list.")
+
+    @commands.command(name="avoidlist")
+    async def avoidlist(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        antinuke = await self.bot.db.get_raw_json(ctx.guild.id, "antinuke")
+        avoided = antinuke.get("avoided_roles", [])
+        if not avoided:
+            await ctx.send("No avoided roles.")
+            return
+        lines = []
+        for rid in avoided:
+            role = ctx.guild.get_role(rid)
+            lines.append(f"• {role.mention if role else f'`{rid}`'}")
+        embed = discord.Embed(
+            title="Avoided Roles",
+            description="\n".join(lines) if lines else "No avoided roles.",
+            color=0xA8D8EA,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(name="blacklist")
+    async def blacklist_cmd(self, ctx: commands.Context) -> None:
+        entries = await self.bot.db.list_whitelist(ctx.guild.id)
+        users = [e for e in entries if not e["admin"]]
+        admins = [e for e in entries if e["admin"]]
+        bl = await self.bot.db.list_blacklist(ctx.guild.id)
+        view = WhitelistView(self, ctx, users, admins, page=2, blacklist=bl)
+        await view.rebuild()
+        await ctx.send(view=view)
+
+    # ── Antinuke Shortcut ────────────────────────────────────────────────────
+
+    async def _open_an_page(self, ctx: commands.Context, page: int) -> None:
+        antinuke_cog = self.bot.get_cog("AntiNukeCog")
+        if not antinuke_cog:
+            await ctx.send("Anti-Nuke cog not loaded.")
+            return
+        settings = await self.bot.db.get_settings(ctx.guild.id)
+        config = settings["antinuke"]
+        from securitybot.cogs.antinuke import AntinukeView
+        view = AntinukeView(antinuke_cog, ctx.guild.id, ctx.author.id, config)
+        view.page = page
+        view.rebuild()
+        await ctx.send(embed=antinuke_cog.render_page(config, page, ctx.guild), view=view)
+
+    @commands.group(name="an", invoke_without_command=True)
+    async def an(self, ctx: commands.Context) -> None:
+        antinuke_cog = self.bot.get_cog("AntiNukeCog")
+        if not antinuke_cog:
+            await ctx.send("Anti-Nuke cog not loaded.")
+            return
+        await antinuke_cog.antinuke_panel(ctx)
+
+    @an.group(name="whitelist", invoke_without_command=True)
+    async def an_whitelist(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 9)
+
+    @an_whitelist.command(name="add")
+    async def an_whitelist_add(self, ctx: commands.Context, uid: int = None) -> None:
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,an whitelist add <uid>`")
+            return
+        antinuke = await self.bot.db.get_raw_json(ctx.guild.id, "antinuke")
+        wl = antinuke.setdefault("whitelist", [])
+        if uid not in wl:
+            wl.append(uid)
+            await self.bot.db.set_raw_json(ctx.guild.id, "antinuke", antinuke)
+        await ctx.send("Affirmative.")
+
+    @an_whitelist.command(name="remove")
+    async def an_whitelist_remove(self, ctx: commands.Context, uid: int = None) -> None:
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,an whitelist remove <uid>`")
+            return
+        antinuke = await self.bot.db.get_raw_json(ctx.guild.id, "antinuke")
+        wl = antinuke.get("whitelist", [])
+        if uid in wl:
+            wl.remove(uid)
+            await self.bot.db.set_raw_json(ctx.guild.id, "antinuke", antinuke)
+        await ctx.send("Affirmative.")
+
+    @an.command(name="channel")
+    async def an_channel(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 3)
+
+    @an.command(name="role")
+    async def an_role(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 4)
+
+    @an.command(name="ban")
+    async def an_ban(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 5)
+
+    @an.command(name="kick")
+    async def an_kick(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 6)
+
+    @an.command(name="ping")
+    async def an_ping(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 2)
+
+    @an.command(name="webhook")
+    async def an_webhook(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 1)
+
+    @an.command(name="audit")
+    async def an_audit(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 7)
+
+    @an.command(name="lockdown")
+    async def an_lockdown(self, ctx: commands.Context) -> None:
+        await self._open_an_page(ctx, 8)
+
+    # ── Whitelist Legacy/Standard Commands ───────────────────────────────────
+
+    @whitelist.group(name="legacy", invoke_without_command=True)
+    async def whitelist_legacy(self, ctx: commands.Context) -> None:
+        entries = await self.bot.db.list_whitelist(ctx.guild.id)
+        users = [e for e in entries if not e["admin"]]
+        admins = [e for e in entries if e["admin"]]
+        bl = await self.bot.db.list_blacklist(ctx.guild.id)
+        view = WhitelistView(self, ctx, users, admins, page=1, blacklist=bl)
+        await view.rebuild()
+        await ctx.send(view=view)
+
+    @whitelist_legacy.command(name="add")
+    async def whitelist_legacy_add(self, ctx: commands.Context, uid: str = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,whitelist legacy add <uid/@mention>`")
+            return
+        try:
+            uid_int = parse_user_id(uid)
+        except (ValueError, TypeError):
+            await ctx.send("Invalid user ID or mention.")
+            return
+        await self.bot.db.remove_whitelist(ctx.guild.id, uid_int)
+        await self.bot.db.add_whitelist(ctx.guild.id, uid_int, ctx.author.id, admin=True)
+        await ctx.send("Affirmative.")
+
+    @whitelist_legacy.command(name="remove")
+    async def whitelist_legacy_remove(self, ctx: commands.Context, uid: str = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,whitelist legacy remove <uid/@mention>`")
+            return
+        try:
+            uid_int = parse_user_id(uid)
+        except (ValueError, TypeError):
+            await ctx.send("Invalid user ID or mention.")
+            return
+        if uid_int == ctx.guild.owner_id:
+            await ctx.send("Cannot remove the guild owner.")
+            return
+        await self.bot.db.remove_whitelist(ctx.guild.id, uid_int)
+        await ctx.send("Affirmative.")
+
+    @whitelist.group(name="standard", invoke_without_command=True)
+    async def whitelist_standard(self, ctx: commands.Context) -> None:
+        await ctx.send("Usage: `,whitelist standard add/remove <uid>`")
+
+    @whitelist_standard.command(name="add")
+    async def whitelist_standard_add(self, ctx: commands.Context, uid: str = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,whitelist standard add <uid/@mention>`")
+            return
+        try:
+            uid_int = parse_user_id(uid)
+        except (ValueError, TypeError):
+            await ctx.send("Invalid user ID or mention.")
+            return
+        await self.bot.db.remove_whitelist(ctx.guild.id, uid_int)
+        await self.bot.db.add_whitelist(ctx.guild.id, uid_int, ctx.author.id, admin=False)
+        await ctx.send("Affirmative.")
+
+    @whitelist_standard.command(name="remove")
+    async def whitelist_standard_remove(self, ctx: commands.Context, uid: str = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,whitelist standard remove <uid/@mention>`")
+            return
+        try:
+            uid_int = parse_user_id(uid)
+        except (ValueError, TypeError):
+            await ctx.send("Invalid user ID or mention.")
+            return
+        if uid_int == ctx.guild.owner_id:
+            await ctx.send("Cannot remove the guild owner.")
+            return
+        await self.bot.db.remove_whitelist(ctx.guild.id, uid_int)
+        await ctx.send("Affirmative.")
+
+    # ── Trust Commands ───────────────────────────────────────────────────────
+
+    @commands.group(name="trust", invoke_without_command=True)
+    async def trust(self, ctx: commands.Context) -> None:
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        entries = await self.bot.db.list_trusted()
+        if not entries:
+            await ctx.send("No trusted users.")
+            return
+        lines = []
+        for e in entries:
+            uid = e["user_id"]
+            user = self.bot.get_user(uid)
+            name = user.name if user else str(uid)
+            lines.append(f"• `<{uid}>` — **{name}**")
+        embed = discord.Embed(
+            title="Trusted Users",
+            description="\n".join(lines),
+            color=0xA8D8EA,
+        )
+        await ctx.send(embed=embed)
+
+    @trust.command(name="add")
+    async def trust_add(self, ctx: commands.Context, uid: int = None) -> None:
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,trust add <uid>`")
+            return
+        await self.bot.db.add_trusted(uid, ctx.author.id)
+        await ctx.send("Affirmative.")
+
+    @trust.command(name="remove")
+    async def trust_remove(self, ctx: commands.Context, uid: int = None) -> None:
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not uid:
+            await ctx.send("Usage: `,trust remove <uid>`")
+            return
+        await self.bot.db.remove_trusted(uid)
+        await ctx.send("Affirmative.")

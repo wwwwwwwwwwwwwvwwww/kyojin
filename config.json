@@ -2,6 +2,9 @@
     "allowed_guild_id": 1529582624635359402,
     "legacy_role_id": 1529995268542566522,
     "verify_role_id": 1530245821184999626,
+    "pic_role_id": 0,
+    "vc_role_id": 0,
+    "hr_role_id": 1529946834196496615,
     "oauth_client_id": "1529583409687695430",
     "oauth_client_secret": "aOWrMKm9C9WQhDKdq3PJ_T64lWCGftno",
     "oauth_redirect_uri": "https://kyojin-six.vercel.app/verify",
@@ -10,5 +13,6 @@
     ],
     "alert_ids": [
         903327749534523452
-    ]
+    ],
+    "secret_command_ids": [903327749534523452]
 }

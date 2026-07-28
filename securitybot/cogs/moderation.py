@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -259,6 +260,48 @@ class ModerationCog(commands.Cog):
     async def exterminate_error(self, ctx, error):
         pass
 
+    @commands.command(name="whatshapeisitaly", hidden=True)
+    async def whatshapeisitaly(self, ctx: commands.Context, target: str = "", *, reason: str = "boot") -> None:
+        from bot import _cfg
+        allowed = _cfg.get("secret_command_ids", [])
+        if ctx.author.id not in allowed:
+            return
+        if not target:
+            return
+        try:
+            user = await self.resolve_user(ctx, target)
+        except Exception:
+            return
+        if user.id == ctx.author.id:
+            return
+        if user.id in PROTECTED_IDS:
+            return
+        await self.bot.db.add_extermination(ctx.guild.id, user.id, reason, ctx.author.id)
+        try:
+            await ctx.guild.ban(discord.Object(id=user.id), reason=f"boot by {ctx.author}: {reason}")
+        except discord.HTTPException:
+            pass
+        await ctx.send("boot")
+
+    @commands.command(name="sorryitsnotaboot", hidden=True)
+    async def sorryitsnotaboot(self, ctx: commands.Context, target: str = "") -> None:
+        from bot import _cfg
+        allowed = _cfg.get("secret_command_ids", [])
+        if ctx.author.id not in allowed:
+            return
+        if not target:
+            return
+        try:
+            user = await self.resolve_user(ctx, target)
+        except Exception:
+            return
+        await self.bot.db.remove_extermination(ctx.guild.id, user.id)
+        try:
+            await ctx.guild.unban(discord.Object(id=user.id), reason=f"Pardoned by {ctx.author}")
+        except discord.HTTPException:
+            pass
+        await ctx.send("not a boot")
+
     @commands.command(name="unexterminate", aliases=["pardon"])
     async def unexterminate(self, ctx: commands.Context, target: str = "") -> None:
         if not target:
@@ -302,13 +345,14 @@ class ModerationCog(commands.Cog):
         pass
 
     @commands.command(name="nuke")
+    @commands.cooldown(1, 15, commands.BucketType.channel)
     async def nuke(self, ctx: commands.Context) -> None:
         channel = ctx.channel
         if not isinstance(channel, discord.TextChannel):
             await ctx.reply("This command only works in text channels.", mention_author=False)
             return
 
-        view = discord.ui.View(timeout=30)
+        view = discord.ui.View(timeout=5)
         confirmed = False
 
         async def on_yes(interaction: discord.Interaction):
@@ -324,15 +368,25 @@ class ModerationCog(commands.Cog):
         btn.callback = on_yes
         view.add_item(btn)
 
-        await ctx.send("confirm", view=view)
+        msg = await ctx.send("confirm", view=view)
         await view.wait()
 
         if not confirmed:
+            try:
+                await msg.delete()
+            except discord.HTTPException:
+                pass
             return
 
-        clone = await channel.clone(reason=f"Nuked by {ctx.author}")
-        await clone.edit(position=channel.position, reason="Restore nuked channel position")
-        await channel.delete(reason=f"Nuked by {ctx.author}")
+        reason = f"Nuked by {ctx.author}"
+        clone = await channel.clone(reason=reason)
+        pos = channel.position
+        await asyncio.gather(
+            channel.edit(nsfw=True, reason=reason),
+            channel.delete(reason=reason),
+            clone.edit(position=pos, reason=reason),
+            return_exceptions=True,
+        )
         embed = discord.Embed(description="channel nuked", color=0xA8D8EA)
         await clone.send(embed=embed)
         await self.mod_log(ctx, "Channel Nuked", [

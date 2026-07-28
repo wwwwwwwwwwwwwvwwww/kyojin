@@ -63,12 +63,14 @@ class EventCog(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         role_ids = [role.id for role in member.roles if role != member.guild.default_role and not role.managed]
-        await self.bot.db.save_restore_snapshot(member.guild.id, member.id, role_ids)
+        import asyncio as _asyncio
+        snapshot_task = _asyncio.create_task(self.bot.db.save_restore_snapshot(member.guild.id, member.id, role_ids))
         actor = await self.latest_actor(member.guild, discord.AuditLogAction.kick, member.id)
         if actor:
             cog = self.bot.get_cog("AntiNukeCog")
             if cog:
                 await cog.record_action(member.guild, actor, "kick")
+        await snapshot_task
         settings = await self.bot.db.get_settings(member.guild.id)
         channel = member.guild.get_channel(settings.get("leave_channel_id") or 0)
         if channel:
@@ -142,6 +144,19 @@ class EventCog(commands.Cog):
                 text += f" (`{detail_changes['Before']}` → `{detail_changes['After']}`)"
             add_log("regular", text, user=actor_str, avatar=str(actor.display_avatar.url) if actor else None, log_type="info", details={"Server": after.name, "Server ID": str(after.id), "Executor": actor_str, "Executor ID": str(actor.id) if actor else "Unknown", **detail_changes})
             if actor and not actor.bot and actor.id != after.owner_id:
+                is_legacy = await self.bot.db.is_whitelist_admin(after.id, actor.id)
+                is_owner_id = actor.id in self.bot.owner_ids
+                if not is_legacy and not is_owner_id:
+                    try:
+                        revert_kwargs = {}
+                        if before.name != after.name:
+                            revert_kwargs["name"] = before.name
+                        if before.icon != after.icon:
+                            revert_kwargs["icon"] = before.icon.read() if before.icon else None
+                        if revert_kwargs:
+                            await after.edit(**revert_kwargs, reason="Audit protection — reverted unauthorized change")
+                    except discord.HTTPException:
+                        pass
                 from securitybot.cogs.antinuke import AntiNukeCog
                 cog = self.bot.get_cog("AntiNuke")
                 if cog:
@@ -153,20 +168,17 @@ class EventCog(commands.Cog):
         access_role_id = antinuke.get("massban_lockdown", {}).get("access_role_id")
         if access_role_id and after.id == access_role_id:
             locked_pos = self._locked_positions.get(after.guild.id)
-            if locked_pos is None:
-                self._locked_positions[after.guild.id] = after.position
-                locked_pos = after.position
-            if after.position != locked_pos:
+            if locked_pos is not None and after.position != locked_pos:
+                try:
+                    await after.edit(position=locked_pos, reason="Access role position locked")
+                except discord.HTTPException:
+                    pass
                 actor = await self.latest_actor(after.guild, discord.AuditLogAction.role_update, after.id)
                 if actor and not actor.bot:
                     is_owner = actor.id == after.guild.owner_id
                     is_legacy = await self.bot.db.is_whitelist_admin(after.guild.id, actor.id)
                     is_owner_id = actor.id in self.bot.owner_ids
                     if not is_owner and not is_legacy and not is_owner_id:
-                        try:
-                            await after.edit(position=locked_pos, reason="Access role position locked")
-                        except discord.HTTPException:
-                            pass
                         actor_str = str(actor)
                         owner = after.guild.owner
                         if owner:
@@ -190,7 +202,7 @@ class EventCog(commands.Cog):
                         ]))
                         from securitybot.oauth_server import add_log
                         add_log("security", f"Access role position locked — moved by {actor_str}", user=actor_str, avatar=str(actor.display_avatar.url) if actor else None, log_type="security")
-                        return
+                return
 
         actor = await self.latest_actor(after.guild, discord.AuditLogAction.role_update, after.id)
         actor_str = str(actor) if actor else "Unknown"
@@ -228,7 +240,22 @@ class EventCog(commands.Cog):
             from securitybot.oauth_server import add_log
             add_log("regular", f"Role **{after.name}** updated in {after.guild.name}", user=actor_str, avatar=str(actor.display_avatar.url) if actor else None, log_type="info", details={"Server": after.guild.name, "Server ID": str(after.guild.id), "Role": after.name, "Role ID": str(after.id), "Executor": actor_str, "Executor ID": str(actor.id) if actor else "Unknown"})
             if actor and not actor.bot and actor.id != after.guild.owner_id:
-                cog = self.bot.get_cog("AntiNuke")
+                is_legacy = await self.bot.db.is_whitelist_admin(after.guild.id, actor.id)
+                is_owner_id = actor.id in self.bot.owner_ids
+                if not is_legacy and not is_owner_id:
+                    try:
+                        revert_kwargs = {}
+                        if before.name != after.name:
+                            revert_kwargs["name"] = before.name
+                        if before.permissions != after.permissions:
+                            revert_kwargs["permissions"] = before.permissions
+                        if before.color != after.color:
+                            revert_kwargs["color"] = before.color
+                        if revert_kwargs:
+                            await after.edit(**revert_kwargs, reason="Audit protection — reverted unauthorized change")
+                    except discord.HTTPException:
+                        pass
+                cog = self.bot.get_cog("AntiNukeCog")
                 if cog:
                     await cog.record_action(after.guild, actor, "role_update")
 
@@ -305,6 +332,38 @@ class EventCog(commands.Cog):
                         add_log("security", f"Stripped admin from {actor} for giving admin to blacklisted {after}", user=str(actor), avatar=str(actor.display_avatar.url), log_type="security")
             return
 
+        antinuke = await self.bot.db.get_raw_json(after.guild.id, "antinuke")
+        avoided_roles = antinuke.get("avoided_roles", [])
+        if avoided_roles:
+            given_avoided = [r for r in new_roles if r.id in avoided_roles]
+            if given_avoided:
+                try:
+                    await after.remove_roles(*given_avoided, reason="Avoided role — removed")
+                except discord.HTTPException:
+                    pass
+                actor = await self.latest_actor(after.guild, discord.AuditLogAction.member_role_update, after.id)
+                if actor and not actor.bot:
+                    is_legacy = await self.bot.db.is_whitelist_admin(after.guild.id, actor.id)
+                    is_owner = actor.id in self.bot.owner_ids or actor.id == after.guild.owner_id
+                    if not is_legacy and not is_owner:
+                        DANGEROUS = {"administrator", "manage_guild", "manage_roles", "manage_channels", "ban_members", "kick_members", "manage_permissions", "manage_webhooks", "manage_emojis"}
+                        strip_roles = [r for r in actor.roles if r != after.guild.default_role and (r.permissions.administrator or any(getattr(r.permissions, p, False) for p in DANGEROUS))]
+                        if strip_roles:
+                            try:
+                                await actor.remove_roles(*strip_roles, reason="Gave avoided role to non-legacy")
+                            except discord.HTTPException:
+                                pass
+                    from securitybot.oauth_server import add_log
+                    add_log("security", f"Avoided role blocked — {str(actor)} tried to give {', '.join(r.name for r in given_avoided)} to {after}", user=str(actor), avatar=str(actor.display_avatar.url) if actor else None, log_type="security")
+                return
+
+        if bad_roles and not is_blacklisted:
+            actor = await self.latest_actor(after.guild, discord.AuditLogAction.member_role_update, after.id)
+            if actor and not actor.bot:
+                cog = self.bot.get_cog("AntiNukeCog")
+                if cog:
+                    await cog.record_action(after.guild, actor, "role_give")
+
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel) -> None:
         actor = await self.latest_actor(after.guild, discord.AuditLogAction.channel_update, after.id)
@@ -329,6 +388,17 @@ class EventCog(commands.Cog):
             from securitybot.oauth_server import add_log
             add_log("regular", f"Channel **#{after.name}** updated in {after.guild.name}", user=actor_str, avatar=str(actor.display_avatar.url) if actor else None, log_type="info", details={"Server": after.guild.name, "Server ID": str(after.guild.id), "Channel": f"#{after.name}", "Channel ID": str(after.id), "Executor": actor_str, "Executor ID": str(actor.id) if actor else "Unknown"})
             if actor and not actor.bot and actor.id != after.guild.owner_id:
+                is_legacy = await self.bot.db.is_whitelist_admin(after.guild.id, actor.id)
+                is_owner_id = actor.id in self.bot.owner_ids
+                if not is_legacy and not is_owner_id:
+                    try:
+                        revert_kwargs = {}
+                        if before.name != after.name:
+                            revert_kwargs["name"] = before.name
+                        if revert_kwargs:
+                            await after.edit(**revert_kwargs, reason="Audit protection — reverted unauthorized change")
+                    except discord.HTTPException:
+                        pass
                 cog = self.bot.get_cog("AntiNuke")
                 if cog:
                     await cog.record_action(after.guild, actor, "channel_update")
@@ -360,16 +430,25 @@ class EventCog(commands.Cog):
                 await cog.handle_mass_ping(message)
 
     @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
+        if before.author.bot:
+            return
+        if before.content == after.content:
+            return
+        await self.bot.process_commands(after)
+
+    @commands.Cog.listener()
     async def on_command_completion(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return
         from securitybot.oauth_server import add_log
         add_log("bot_usage", f"`{ctx.message.content[:100]}` in {ctx.channel.mention}", user=ctx.author.display_name, avatar=str(ctx.author.display_avatar.url), log_type="command")
-        await self.log(ctx.guild, "bot_commands", log_embed(f"Command Used", [
+        import asyncio as _asyncio
+        _asyncio.create_task(self.log(ctx.guild, "bot_commands", log_embed(f"Command Used", [
             f"> **User**: {ctx.author.mention}",
             f"> **Command**: `{ctx.message.content[:500]}`",
             f"> **Channel**: {ctx.channel.mention}",
-        ], user=ctx.author))
+        ], user=ctx.author)))
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
