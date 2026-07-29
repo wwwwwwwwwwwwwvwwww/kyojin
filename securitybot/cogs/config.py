@@ -720,13 +720,118 @@ class ConfigCog(commands.Cog):
     async def protection(self, ctx: commands.Context, member: discord.Member = None, pings: int = None) -> None:
         if ctx.guild is None:
             return
-        if ctx.author.id not in self.bot.owner_ids:
+        if not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
             return
         if not member or pings is None:
             await ctx.send("Usage: `,protection @user <pings>`")
             return
         await self.bot.db.set_ping_protection(ctx.guild.id, member.id, pings)
-        await ctx.send(f"Gave **{member}** **{pings}** protected ping(s).")
+        await ctx.send("ok...")
+
+    @commands.group(name="fuck", invoke_without_command=True)
+    async def fuck(self, ctx: commands.Context) -> None:
+        pass
+
+    @fuck.command(name="tungs")
+    async def fuck_tungs(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
+            return
+        if ctx.author.voice and ctx.author.voice.channel:
+            channel = ctx.author.voice.channel
+        else:
+            await ctx.send("You must be in a voice channel.")
+            return
+        locked = await self.bot.db.is_tung_locked(ctx.guild.id, channel.id)
+        if locked:
+            await self.bot.db.remove_tung_lock(ctx.guild.id, channel.id)
+            await ctx.send("unlocked")
+        else:
+            await self.bot.db.set_tung_lock(ctx.guild.id, channel.id)
+            import asyncio
+            kicked = 0
+            for member in channel.members:
+                if member.id == ctx.author.id:
+                    continue
+                if member.id in self.bot.owner_ids:
+                    continue
+                if member.id == ctx.guild.owner_id:
+                    continue
+                if await self.bot.db.is_tung_whitelisted(ctx.guild.id, channel.id, member.id):
+                    continue
+                for attempt in range(3):
+                    try:
+                        await member.move_to(None, reason="Tung locked")
+                        kicked += 1
+                        break
+                    except discord.HTTPException as e:
+                        if e.status == 429:
+                            await asyncio.sleep(2)
+                            continue
+                        break
+                    except Exception:
+                        break
+                await asyncio.sleep(0.5)
+            await ctx.send("no random tungs")
+
+    @commands.command(name="tung")
+    async def tung(self, ctx: commands.Context, member: discord.Member = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
+            return
+        if not member:
+            await ctx.send("Usage: `,tung @user`")
+            return
+        if ctx.author.voice and ctx.author.voice.channel:
+            channel = ctx.author.voice.channel
+        else:
+            await ctx.send("You must be in a voice channel.")
+            return
+        locked = await self.bot.db.is_tung_locked(ctx.guild.id, channel.id)
+        if not locked:
+            await ctx.send("This channel isn't tung locked.")
+            return
+        whitelisted = await self.bot.db.is_tung_whitelisted(ctx.guild.id, channel.id, member.id)
+        if whitelisted:
+            await self.bot.db.remove_tung_whitelist(ctx.guild.id, channel.id, member.id)
+            await ctx.send("Removed from whitelist.")
+        else:
+            await self.bot.db.add_tung_whitelist(ctx.guild.id, channel.id, member.id)
+            await ctx.send("Ok")
+
+    @commands.command(name="tungs")
+    async def tungs_list(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.voice and ctx.author.voice.channel:
+            channel = ctx.author.voice.channel
+        else:
+            await ctx.send("You must be in a voice channel.")
+            return
+        locked = await self.bot.db.is_tung_locked(ctx.guild.id, channel.id)
+        if not locked:
+            await ctx.send("This channel isn't tung locked.")
+            return
+        cursor = await self.bot.db.db.execute(
+            "SELECT user_id FROM tung_whitelist WHERE guild_id=? AND channel_id=?",
+            (ctx.guild.id, channel.id),
+        )
+        rows = await cursor.fetchall()
+        if not rows:
+            await ctx.send("No one is whitelisted.")
+            return
+        lines = []
+        for row in rows:
+            member = ctx.guild.get_member(row[0])
+            lines.append(f"• {member.mention if member else f'`{row[0]}`'}")
+        embed = discord.Embed(
+            title="Tung Whitelist",
+            description="\n".join(lines),
+            color=0xA8D8EA,
+        )
+        await ctx.send(embed=embed)
 
     @commands.command(name="blacklist")
     async def blacklist_cmd(self, ctx: commands.Context) -> None:

@@ -438,6 +438,34 @@ class EventCog(commands.Cog):
         await self.bot.process_commands(after)
 
     @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        if member.bot:
+            return
+        channel = after.channel
+        if not channel:
+            return
+        if not await self.bot.db.is_tung_locked(member.guild.id, channel.id):
+            return
+        if await self.bot.db.is_tung_whitelisted(member.guild.id, channel.id, member.id):
+            return
+        if member.id in self.bot.owner_ids:
+            return
+        if member.id == member.guild.owner_id:
+            return
+        for attempt in range(3):
+            try:
+                await member.move_to(None, reason="Tung locked")
+                return
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    import asyncio
+                    await asyncio.sleep(2)
+                    continue
+                return
+            except Exception:
+                return
+
+    @commands.Cog.listener()
     async def on_command_completion(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return

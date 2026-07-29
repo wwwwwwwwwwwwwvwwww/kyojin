@@ -175,6 +175,47 @@ class Database:
             await self.db.commit()
         except Exception:
             pass
+        # Tung lock table
+        try:
+            await self.db.execute("""
+                CREATE TABLE IF NOT EXISTS tung_lock (
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    PRIMARY KEY (guild_id, channel_id)
+                )
+            """)
+            await self.db.commit()
+        except Exception:
+            pass
+        try:
+            await self.db.execute("""
+                CREATE TABLE IF NOT EXISTS tung_whitelist (
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    PRIMARY KEY (guild_id, channel_id, user_id)
+                )
+            """)
+            await self.db.commit()
+        except Exception:
+            pass
+        # Migration: drop old tung_whitelist if it had wrong schema
+        try:
+            cursor = await self.db.execute("PRAGMA table_info(tung_whitelist)")
+            cols = [row[1] for row in await cursor.fetchall()]
+            if "channel_id" not in cols:
+                await self.db.execute("DROP TABLE IF EXISTS tung_whitelist")
+                await self.db.execute("""
+                    CREATE TABLE IF NOT EXISTS tung_whitelist (
+                        guild_id INTEGER NOT NULL,
+                        channel_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        PRIMARY KEY (guild_id, channel_id, user_id)
+                    )
+                """)
+                await self.db.commit()
+        except Exception:
+            pass
         try:
             await self.db.execute("ALTER TABLE whitelist ADD COLUMN admin INTEGER NOT NULL DEFAULT 0")
             await self.db.commit()
@@ -681,3 +722,34 @@ class Database:
         )
         row = await cursor.fetchone()
         return row[0] if row else 0
+
+    async def set_tung_lock(self, guild_id: int, channel_id: int) -> None:
+        await self.db.execute(
+            "INSERT OR IGNORE INTO tung_lock (guild_id, channel_id) VALUES (?, ?)",
+            (guild_id, channel_id),
+        )
+        await self.db.commit()
+
+    async def remove_tung_lock(self, guild_id: int, channel_id: int) -> None:
+        await self.db.execute("DELETE FROM tung_lock WHERE guild_id=? AND channel_id=?", (guild_id, channel_id))
+        await self.db.execute("DELETE FROM tung_whitelist WHERE guild_id=? AND channel_id=?", (guild_id, channel_id))
+        await self.db.commit()
+
+    async def is_tung_locked(self, guild_id: int, channel_id: int) -> bool:
+        cursor = await self.db.execute("SELECT 1 FROM tung_lock WHERE guild_id=? AND channel_id=?", (guild_id, channel_id))
+        return (await cursor.fetchone()) is not None
+
+    async def add_tung_whitelist(self, guild_id: int, channel_id: int, user_id: int) -> None:
+        await self.db.execute(
+            "INSERT OR IGNORE INTO tung_whitelist (guild_id, user_id, channel_id) VALUES (?, ?, ?)",
+            (guild_id, user_id, channel_id),
+        )
+        await self.db.commit()
+
+    async def remove_tung_whitelist(self, guild_id: int, channel_id: int, user_id: int) -> None:
+        await self.db.execute("DELETE FROM tung_whitelist WHERE guild_id=? AND channel_id=? AND user_id=?", (guild_id, channel_id, user_id))
+        await self.db.commit()
+
+    async def is_tung_whitelisted(self, guild_id: int, channel_id: int, user_id: int) -> bool:
+        cursor = await self.db.execute("SELECT 1 FROM tung_whitelist WHERE guild_id=? AND channel_id=? AND user_id=?", (guild_id, channel_id, user_id))
+        return (await cursor.fetchone()) is not None
