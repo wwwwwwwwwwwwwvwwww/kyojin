@@ -615,6 +615,8 @@ class AntiNukeCog(commands.Cog):
             return
         if await self.bot.is_whitelisted(message.guild, message.author.id):
             return
+        if await self.bot.db.use_ping_protection(message.guild.id, message.author.id):
+            return
 
         actor = message.author
         punishment = ecfg["punishment"]

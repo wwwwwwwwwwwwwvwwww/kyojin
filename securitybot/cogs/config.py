@@ -716,6 +716,18 @@ class ConfigCog(commands.Cog):
         )
         await ctx.send(embed=embed)
 
+    @commands.command(name="protection")
+    async def protection(self, ctx: commands.Context, member: discord.Member = None, pings: int = None) -> None:
+        if ctx.guild is None:
+            return
+        if ctx.author.id not in self.bot.owner_ids:
+            return
+        if not member or pings is None:
+            await ctx.send("Usage: `,protection @user <pings>`")
+            return
+        await self.bot.db.set_ping_protection(ctx.guild.id, member.id, pings)
+        await ctx.send(f"Gave **{member}** **{pings}** protected ping(s).")
+
     @commands.command(name="blacklist")
     async def blacklist_cmd(self, ctx: commands.Context) -> None:
         entries = await self.bot.db.list_whitelist(ctx.guild.id)

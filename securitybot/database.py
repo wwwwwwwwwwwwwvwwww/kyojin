@@ -162,6 +162,19 @@ class Database:
             );
             """
         )
+        # Ping protection table
+        try:
+            await self.db.execute("""
+                CREATE TABLE IF NOT EXISTS ping_protection (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    pings_allowed INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, user_id)
+                )
+            """)
+            await self.db.commit()
+        except Exception:
+            pass
         try:
             await self.db.execute("ALTER TABLE whitelist ADD COLUMN admin INTEGER NOT NULL DEFAULT 0")
             await self.db.commit()
@@ -634,3 +647,37 @@ class Database:
         cursor = await self.db.execute("SELECT user_id, added_by, added_at FROM trusted_users ORDER BY added_at")
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def set_ping_protection(self, guild_id: int, user_id: int, pings: int) -> None:
+        await self.db.execute(
+            "INSERT OR REPLACE INTO ping_protection (guild_id, user_id, pings_allowed) VALUES (?, ?, ?)",
+            (guild_id, user_id, pings),
+        )
+        await self.db.commit()
+
+    async def use_ping_protection(self, guild_id: int, user_id: int) -> bool:
+        cursor = await self.db.execute(
+            "SELECT pings_allowed FROM ping_protection WHERE guild_id=? AND user_id=?",
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if not row or row[0] <= 0:
+            return False
+        new_count = row[0] - 1
+        if new_count <= 0:
+            await self.db.execute("DELETE FROM ping_protection WHERE guild_id=? AND user_id=?", (guild_id, user_id))
+        else:
+            await self.db.execute(
+                "UPDATE ping_protection SET pings_allowed=? WHERE guild_id=? AND user_id=?",
+                (new_count, guild_id, user_id),
+            )
+        await self.db.commit()
+        return True
+
+    async def get_ping_protection(self, guild_id: int, user_id: int) -> int:
+        cursor = await self.db.execute(
+            "SELECT pings_allowed FROM ping_protection WHERE guild_id=? AND user_id=?",
+            (guild_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else 0
