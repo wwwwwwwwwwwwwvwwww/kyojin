@@ -199,14 +199,15 @@ class Database:
             await self.db.commit()
         except Exception:
             pass
-        # Migration: drop old tung_whitelist if it had wrong schema
+        # Migration: recreate tung_whitelist if old schema missing channel_id
         try:
-            cursor = await self.db.execute("PRAGMA table_info(tung_whitelist)")
-            cols = [row[1] for row in await cursor.fetchall()]
-            if "channel_id" not in cols:
+            cursor = await self.db.execute("SELECT channel_id FROM tung_whitelist LIMIT 1")
+            await cursor.fetchall()
+        except Exception:
+            try:
                 await self.db.execute("DROP TABLE IF EXISTS tung_whitelist")
                 await self.db.execute("""
-                    CREATE TABLE IF NOT EXISTS tung_whitelist (
+                    CREATE TABLE tung_whitelist (
                         guild_id INTEGER NOT NULL,
                         channel_id INTEGER NOT NULL,
                         user_id INTEGER NOT NULL,
@@ -214,8 +215,8 @@ class Database:
                     )
                 """)
                 await self.db.commit()
-        except Exception:
-            pass
+            except Exception:
+                pass
         try:
             await self.db.execute("ALTER TABLE whitelist ADD COLUMN admin INTEGER NOT NULL DEFAULT 0")
             await self.db.commit()

